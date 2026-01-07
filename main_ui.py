@@ -3,12 +3,10 @@
 import sys
 from PyQt6 import QtWidgets, QtCore, QtGui
 import uuid
-from manga_ocr import MangaOcr
 from window_capture import WindowCapture
 import numpy as np
 from sugoi_wrapper import SugoiTranslator
 from image_processor import ImagePreprocessor
-from rapid_wrapper import RapidOCRWrapper
 from winocr_wrapper import WindowsOCR
 from qwen_wrapper import LocalVisionAI
 
