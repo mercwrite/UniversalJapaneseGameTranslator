@@ -7,57 +7,153 @@ class TextBoxOverlay(QtWidgets.QLabel):
     geometry_changed = QtCore.pyqtSignal(int, int, int, int)  # x, y, width, height
 
     def __init__(self, x, y, w, h, initial_opacity=200):
-        super().__init__()
-        self.setGeometry(x, y, w, h)
+        try:
+            print(f"[OVERLAY] Initializing TextBoxOverlay at ({x}, {y}) size {w}x{h}")
+            super().__init__()
+            print("[OVERLAY] super().__init__() completed")
 
-        # State variable to hold opacity
-        self.bg_opacity = initial_opacity
+            self.setGeometry(x, y, w, h)
+            print("[OVERLAY] setGeometry completed")
 
-        # Window Flags
-        self.setWindowFlags(
-            QtCore.Qt.WindowType.FramelessWindowHint
-            | QtCore.Qt.WindowType.WindowStaysOnTopHint
-            | QtCore.Qt.WindowType.Tool
-        )
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
-        # Remove WA_TransparentForMouseEvents to enable mouse interaction
+            # State variable to hold opacity
+            self.bg_opacity = initial_opacity
+            print(f"[OVERLAY] Set opacity to {initial_opacity}")
+
+            # Window Flags - frameless
+            self.setWindowFlags(
+                QtCore.Qt.WindowType.FramelessWindowHint
+                | QtCore.Qt.WindowType.WindowStaysOnTopHint
+                | QtCore.Qt.WindowType.Tool
+            )
+            print("[OVERLAY] setWindowFlags completed")
+
+            self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+            print("[OVERLAY] setAttribute completed")
+        except Exception as e:
+            print(f"[OVERLAY ERROR] Exception in __init__ setup: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
         # Mouse interaction state
         self.drag_start_position = None
-        self.resize_edge = None  # 'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', or None
-        self.resize_handle_size = 8  # Size of resize handles in pixels
-        self.min_size = 50  # Minimum overlay size
+        self.resize_edge = None
+        self.resize_start_geometry = None
+        self.resize_handle_size = 10
+        self.min_size = 50
+
+        # Close button visibility state
+        self.close_button_visible = False
+
+        # Hover state for visual feedback
+        self.hover_edge = None
 
         # Text settings
         self.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.setWordWrap(True)
-        self.setText("Waiting for text...")
+        self.setText("Translated Text Goes Here...")
 
-        # Set font style only (background is drawn in paintEvent)
-        self.setStyleSheet(
-            """
-            color: white;
+        # Set white text style
+        self.setStyleSheet("""
+            color: #EEEEEE;
             font-size: 14px;
-            font-weight: bold;
-            padding: 5px;
-        """
-        )
+            font-weight: 400;
+            font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+            padding: 12px 16px;
+            line-height: 1.5;
+            background-color: transparent;
+        """)
 
         # Enable mouse tracking for hover effects
+        print("[OVERLAY] Setting mouse tracking")
         self.setMouseTracking(True)
 
-        self.show()
+        # Create close button (initially hidden)
+        try:
+            print("[OVERLAY] Creating close button")
+            self.close_button = QtWidgets.QPushButton("×", self)
+            self.close_button.setFixedSize(26, 26)
+            self.close_button.setStyleSheet("""
+                QPushButton {
+                    background-color: rgba(60, 60, 60, 180);
+                    border: 1px solid rgba(120, 120, 120, 120);
+                    border-radius: 13px;
+                    color: #FFFFFF;
+                    font-weight: bold;
+                    font-size: 20px;
+                    font-family: Arial, sans-serif;
+                    padding: 0px;
+                    text-align: center;
+                }
+                QPushButton:hover {
+                    background-color: rgba(80, 80, 80, 220);
+                    border-color: rgba(160, 160, 160, 180);
+                    color: #FFFFFF;
+                }
+                QPushButton:pressed {
+                    background-color: rgba(100, 100, 100, 240);
+                }
+            """)
+            self.close_button.hide()  # Hidden by default
+            self.close_button.clicked.connect(self.close)
+            print("[OVERLAY] Close button created")
+
+            # Position close button in top-right corner
+            print("[OVERLAY] Positioning close button")
+            self.update_close_button_position()
+            print("[OVERLAY] Close button positioned")
+        except Exception as e:
+            print(f"[OVERLAY ERROR] Failed to create close button: {e}")
+            import traceback
+            traceback.print_exc()
+
+        try:
+            print("[OVERLAY] Calling show()...")
+            self.show()
+            print("[OVERLAY] show() completed - overlay should be visible")
+        except Exception as e:
+            print(f"[OVERLAY ERROR] Failed to show overlay: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+
+    def update_close_button_position(self):
+        """Update close button position to top-right corner."""
+        margin = 6
+        self.close_button.move(
+            self.width() - self.close_button.width() - margin,
+            margin
+        )
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        """Handle resize events to reposition close button."""
+        super().resizeEvent(event)
+        self.update_close_button_position()
+
+    def enterEvent(self, event: QtGui.QEnterEvent) -> None:
+        """Show close button when mouse enters the widget."""
+        super().enterEvent(event)
+        self.close_button_visible = True
+        self.close_button.show()
+        self.update()
+
+    def leaveEvent(self, event: QtCore.QEvent) -> None:
+        """Hide close button when mouse leaves the widget."""
+        super().leaveEvent(event)
+        self.close_button_visible = False
+        self.close_button.hide()
+        self.hover_edge = None
+        self.update()
 
     @safe_execute(default_return=None, log_errors=False, error_message="Failed to set opacity")
     def set_background_opacity(self, alpha: int) -> None:
         """Update the background opacity and trigger a repaint."""
         try:
-            # Clamp opacity to valid range
             alpha = max(0, min(255, int(alpha)))
             self.bg_opacity = alpha
-            self.update()  # This triggers paintEvent immediately
+            self.update()
         except Exception:
-            pass  # Already handled by decorator
+            pass
 
     @safe_execute(default_return=None, log_errors=False, error_message="Failed to update text")
     def update_text(self, text: str) -> None:
@@ -65,36 +161,46 @@ class TextBoxOverlay(QtWidgets.QLabel):
         try:
             if text is None:
                 text = ""
-            # Ensure text is a string and limit length to prevent UI issues
-            text = str(text)[:1000]  # Limit to 1000 characters
+            text = str(text)[:1000]
             self.setText(text)
         except Exception:
-            pass  # Already handled by decorator
+            pass
 
     def get_resize_edge(self, pos: QtCore.QPoint) -> str | None:
         """Determine which resize edge/corner the mouse is over."""
         x, y = pos.x(), pos.y()
         w, h = self.width(), self.height()
         handle_size = self.resize_handle_size
+        
+        # Don't allow resizing from top-right corner if close button is visible
+        close_button_rect = self.close_button.geometry()
+        if self.close_button_visible and close_button_rect.contains(pos):
+            return None
 
-        # Check corners first (they take priority)
+        # Check corners first (but skip top-right if close button is there)
         if x < handle_size and y < handle_size:
             return "nw"
         elif x >= w - handle_size and y < handle_size:
-            return "ne"
+            # Skip if mouse is over close button area
+            if not (self.close_button_visible and close_button_rect.contains(pos)):
+                return "ne"
         elif x < handle_size and y >= h - handle_size:
             return "sw"
         elif x >= w - handle_size and y >= h - handle_size:
             return "se"
         # Check edges
         elif y < handle_size:
-            return "n"
+            # Skip top edge if mouse is over close button
+            if not (self.close_button_visible and close_button_rect.contains(pos)):
+                return "n"
         elif y >= h - handle_size:
             return "s"
         elif x < handle_size:
             return "w"
         elif x >= w - handle_size:
-            return "e"
+            # Skip right edge if mouse is over close button
+            if not (self.close_button_visible and close_button_rect.contains(pos)):
+                return "e"
         return None
 
     def get_cursor_for_edge(self, edge: str | None) -> QtCore.Qt.CursorShape:
@@ -111,75 +217,98 @@ class TextBoxOverlay(QtWidgets.QLabel):
         }
         return cursor_map.get(edge, QtCore.Qt.CursorShape.ArrowCursor)
 
-    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:  # type: ignore[override]
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
         """Handle mouse press for dragging and resizing."""
+        # Don't process if clicking on close button
+        if self.close_button.underMouse():
+            return super().mousePressEvent(event)
+
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self.resize_edge = self.get_resize_edge(event.pos())
             if self.resize_edge is None:
-                # Start dragging
+                # Dragging mode - store offset from top-left corner
                 self.drag_start_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             else:
-                # Start resizing
+                # Resizing mode - store current global position and geometry
                 self.drag_start_position = event.globalPosition().toPoint()
+                self.resize_start_geometry = self.geometry()
         super().mousePressEvent(event)
 
-    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:  # type: ignore[override]
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
         """Handle mouse move for cursor changes and dragging/resizing."""
         if self.drag_start_position is None:
-            # Update cursor based on hover position
+            # Not dragging - just update cursor based on edge
             edge = self.get_resize_edge(event.pos())
             self.setCursor(self.get_cursor_for_edge(edge))
+            # Update hover state for visual feedback
+            if edge != self.hover_edge:
+                self.hover_edge = edge
+                self.update()
         elif event.buttons() & QtCore.Qt.MouseButton.LeftButton:
-            # Currently dragging or resizing
             if self.resize_edge is None:
-                # Dragging
+                # Dragging mode - move the window
                 new_pos = event.globalPosition().toPoint() - self.drag_start_position
                 self.move(new_pos)
                 self._emit_geometry_changed()
             else:
-                # Resizing
-                current_rect = self.geometry()
+                # Resizing mode - adjust size based on edge/corner
                 global_pos = event.globalPosition().toPoint()
                 delta = global_pos - self.drag_start_position
-                
-                new_rect = current_rect
+
+                # Start with original geometry from when resizing started
+                start_rect = self.resize_start_geometry
+                new_x = start_rect.x()
+                new_y = start_rect.y()
+                new_width = start_rect.width()
+                new_height = start_rect.height()
+
                 edge = self.resize_edge
 
                 # Handle horizontal resizing
                 if "e" in edge:
-                    new_width = current_rect.width() + delta.x()
-                    if new_width >= self.min_size:
-                        new_rect.setWidth(new_width)
+                    # Dragging east edge - increase width
+                    new_width = start_rect.width() + delta.x()
                 elif "w" in edge:
-                    new_width = current_rect.width() - delta.x()
-                    if new_width >= self.min_size:
-                        new_rect.setX(current_rect.x() + delta.x())
-                        new_rect.setWidth(new_width)
+                    # Dragging west edge - move left and increase width
+                    new_width = start_rect.width() - delta.x()
+                    new_x = start_rect.x() + delta.x()
 
                 # Handle vertical resizing
                 if "s" in edge:
-                    new_height = current_rect.height() + delta.y()
-                    if new_height >= self.min_size:
-                        new_rect.setHeight(new_height)
+                    # Dragging south edge - increase height
+                    new_height = start_rect.height() + delta.y()
                 elif "n" in edge:
-                    new_height = current_rect.height() - delta.y()
-                    if new_height >= self.min_size:
-                        new_rect.setY(current_rect.y() + delta.y())
-                        new_rect.setHeight(new_height)
+                    # Dragging north edge - move up and increase height
+                    new_height = start_rect.height() - delta.y()
+                    new_y = start_rect.y() + delta.y()
 
-                # Update the geometry
-                if new_rect != current_rect:
-                    self.setGeometry(new_rect)
-                    self.drag_start_position = global_pos
-                    self._emit_geometry_changed()
+                # Apply minimum size constraints
+                if new_width < self.min_size:
+                    if "w" in edge:
+                        # When dragging west edge, don't move if at minimum
+                        new_x = start_rect.x() + start_rect.width() - self.min_size
+                    new_width = self.min_size
+
+                if new_height < self.min_size:
+                    if "n" in edge:
+                        # When dragging north edge, don't move if at minimum
+                        new_y = start_rect.y() + start_rect.height() - self.min_size
+                    new_height = self.min_size
+
+                # Apply new geometry
+                self.setGeometry(new_x, new_y, new_width, new_height)
+                self._emit_geometry_changed()
         super().mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:  # type: ignore[override]
+    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
         """Handle mouse release to stop dragging/resizing."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self.drag_start_position = None
             self.resize_edge = None
-            self.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
+            self.resize_start_geometry = None
+            # Update cursor based on current position
+            edge = self.get_resize_edge(event.pos())
+            self.setCursor(self.get_cursor_for_edge(edge))
         super().mouseReleaseEvent(event)
 
     @safe_execute(default_return=None, log_errors=False, error_message="Failed to emit geometry changed")
@@ -187,75 +316,44 @@ class TextBoxOverlay(QtWidgets.QLabel):
         """Emit signal with current geometry."""
         try:
             rect = self.geometry()
-            # Validate geometry before emitting
             if rect.width() > 0 and rect.height() > 0:
                 self.geometry_changed.emit(rect.x(), rect.y(), rect.width(), rect.height())
         except Exception:
-            pass  # Already handled by decorator
+            pass
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # type: ignore[override]
-        """Draw a rounded translucent rectangle behind the text."""
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        """Draw a rounded translucent rectangle with modern border."""
         try:
             painter = QtGui.QPainter(self)
             if not painter.isActive():
                 return
-            
+
             painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
 
-            # Background color (grey with dynamic alpha)
-            brush_color = QtGui.QColor(50, 50, 50, self.bg_opacity)
+            # Semi-transparent dark background
+            brush_color = QtGui.QColor(13, 13, 13, self.bg_opacity)
             painter.setBrush(QtGui.QBrush(brush_color))
 
-            # Border (faint white)
-            pen_color = QtGui.QColor(255, 255, 255, 50)
-            painter.setPen(QtGui.QPen(pen_color, 1))
+            # Border color - highlight if hovering over resize edge or dragging
+            if self.hover_edge or self.resize_edge:
+                # Brighter border when hovering over resize edge
+                pen_color = QtGui.QColor(100, 160, 220, 220)
+                border_width = 2
+            else:
+                # Normal subtle border
+                border_alpha = min(200, int(self.bg_opacity * 0.8))
+                pen_color = QtGui.QColor(80, 80, 80, border_alpha)
+                border_width = 1
 
-            # Draw the rounded rectangle
-            painter.drawRoundedRect(self.rect(), 10, 10)
+            painter.setPen(QtGui.QPen(pen_color, border_width))
 
-            # Draw resize handles (small squares at corners and edges)
-            handle_size = self.resize_handle_size
-            handle_color = QtGui.QColor(255, 255, 255, 150)
-            painter.setPen(QtGui.QPen(handle_color, 1))
-            painter.setBrush(QtGui.QBrush(handle_color))
+            # Draw rounded rectangle with more rounded corners
+            painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 12, 12)
 
-            rect = self.rect()
-            # Only draw handles if widget is large enough
-            if rect.width() > handle_size * 2 and rect.height() > handle_size * 2:
-                # Corners
-                painter.drawRect(0, 0, handle_size, handle_size)
-                painter.drawRect(rect.width() - handle_size, 0, handle_size, handle_size)
-                painter.drawRect(0, rect.height() - handle_size, handle_size, handle_size)
-                painter.drawRect(
-                    rect.width() - handle_size,
-                    rect.height() - handle_size,
-                    handle_size,
-                    handle_size,
-                )
-                # Edges (centered)
-                mid_x = rect.width() // 2
-                mid_y = rect.height() // 2
-                painter.drawRect(mid_x - handle_size // 2, 0, handle_size, handle_size)
-                painter.drawRect(
-                    mid_x - handle_size // 2,
-                    rect.height() - handle_size,
-                    handle_size,
-                    handle_size,
-                )
-                painter.drawRect(0, mid_y - handle_size // 2, handle_size, handle_size)
-                painter.drawRect(
-                    rect.width() - handle_size,
-                    mid_y - handle_size // 2,
-                    handle_size,
-                    handle_size,
-                )
-
-            # Draw the text on top of the rectangle
+            # Draw the text on top
             super().paintEvent(event)
         except Exception:
-            # Fallback: just draw text without background on error
             try:
                 super().paintEvent(event)
             except Exception:
                 pass
-
