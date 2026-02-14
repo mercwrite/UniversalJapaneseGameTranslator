@@ -6,11 +6,11 @@ from error_handler import safe_execute
 class SugoiTranslator:
     def __init__(self, model_folder_path, device="auto"):
         print("Loading Sugoi Translator (Split Tokenizer Mode)...")
-        
+
         self.translator = None
         self.sp_source = None
         self.sp_target = None
-        
+
         try:
             # 1. Hardware Detection
             if device == "auto":
@@ -21,15 +21,15 @@ class SugoiTranslator:
             # It will automatically find 'model.bin' and the vocab txt files
             if not os.path.exists(model_folder_path):
                 raise FileNotFoundError(f"Model folder not found: {model_folder_path}")
-            
+
             self.translator = ctranslate2.Translator(model_folder_path, device=device)
-            
+
             # 3. Load the Japanese (Source) Tokenizer
             # This is used to turn your Japanese text into numbers/tokens
             ja_sp_path = os.path.join(model_folder_path, "spm.ja.nopretok.model")
             if not os.path.exists(ja_sp_path):
                 raise FileNotFoundError(f"Missing Japanese tokenizer: {ja_sp_path}")
-                
+
             self.sp_source = spm.SentencePieceProcessor()
             self.sp_source.load(ja_sp_path)
 
@@ -49,7 +49,7 @@ class SugoiTranslator:
     def translate(self, text):
         if not self.translator or not self.sp_source or not self.sp_target:
             return ""
-        
+
         if not text or not isinstance(text, str) or text.strip() == "":
             return ""
 
@@ -67,7 +67,7 @@ class SugoiTranslator:
             # Step 3: Decode using the ENGLISH model
             if not results[0].hypotheses or len(results[0].hypotheses) == 0:
                 return ""
-            
+
             output_tokens = results[0].hypotheses[0]
             translated_text = self.sp_target.decode(output_tokens)
 

@@ -39,7 +39,7 @@ class WindowCapture:
             except Exception:
                 pass  # Skip windows that cause errors
             return True
-            
+
         try:
             # Define the callback type for EnumWindows
             EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
@@ -121,7 +121,7 @@ class WindowCapture:
 
             windll.gdi32.SelectObject(mfcDC, saveBitMap)
 
-            # PrintWindow 
+            # PrintWindow
             # The '2' flag is PW_CLIENTONLY - captures content only, no window frame
             result = windll.user32.PrintWindow(self.hwnd, mfcDC, 2)
 
@@ -145,7 +145,7 @@ class WindowCapture:
                 return None
 
             buffer = ctypes.create_string_buffer(buffer_len)
-            
+
             if windll.gdi32.GetDIBits(mfcDC, saveBitMap, 0, h, buffer, ctypes.byref(bmpinfo), 0) == 0:
                 return None
 

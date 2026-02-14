@@ -7,33 +7,19 @@ class TextBoxOverlay(QtWidgets.QLabel):
     geometry_changed = QtCore.pyqtSignal(int, int, int, int)  # x, y, width, height
 
     def __init__(self, x, y, w, h, initial_opacity=200):
-        try:
-            print(f"[OVERLAY] Initializing TextBoxOverlay at ({x}, {y}) size {w}x{h}")
-            super().__init__()
-            print("[OVERLAY] super().__init__() completed")
+        super().__init__()
+        self.setGeometry(x, y, w, h)
 
-            self.setGeometry(x, y, w, h)
-            print("[OVERLAY] setGeometry completed")
+        # State variable to hold opacity
+        self.bg_opacity = initial_opacity
 
-            # State variable to hold opacity
-            self.bg_opacity = initial_opacity
-            print(f"[OVERLAY] Set opacity to {initial_opacity}")
-
-            # Window Flags - frameless
-            self.setWindowFlags(
-                QtCore.Qt.WindowType.FramelessWindowHint
-                | QtCore.Qt.WindowType.WindowStaysOnTopHint
-                | QtCore.Qt.WindowType.Tool
-            )
-            print("[OVERLAY] setWindowFlags completed")
-
-            self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
-            print("[OVERLAY] setAttribute completed")
-        except Exception as e:
-            print(f"[OVERLAY ERROR] Exception in __init__ setup: {e}")
-            import traceback
-            traceback.print_exc()
-            raise
+        # Window Flags - frameless
+        self.setWindowFlags(
+            QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.WindowStaysOnTopHint
+            | QtCore.Qt.WindowType.Tool
+        )
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
 
         # Mouse interaction state
         self.drag_start_position = None
@@ -65,57 +51,37 @@ class TextBoxOverlay(QtWidgets.QLabel):
         """)
 
         # Enable mouse tracking for hover effects
-        print("[OVERLAY] Setting mouse tracking")
         self.setMouseTracking(True)
 
         # Create close button (initially hidden)
-        try:
-            print("[OVERLAY] Creating close button")
-            self.close_button = QtWidgets.QPushButton("×", self)
-            self.close_button.setFixedSize(26, 26)
-            self.close_button.setStyleSheet("""
-                QPushButton {
-                    background-color: rgba(60, 60, 60, 180);
-                    border: 1px solid rgba(120, 120, 120, 120);
-                    border-radius: 13px;
-                    color: #FFFFFF;
-                    font-weight: bold;
-                    font-size: 20px;
-                    font-family: Arial, sans-serif;
-                    padding: 0px;
-                    text-align: center;
-                }
-                QPushButton:hover {
-                    background-color: rgba(80, 80, 80, 220);
-                    border-color: rgba(160, 160, 160, 180);
-                    color: #FFFFFF;
-                }
-                QPushButton:pressed {
-                    background-color: rgba(100, 100, 100, 240);
-                }
-            """)
-            self.close_button.hide()  # Hidden by default
-            self.close_button.clicked.connect(self.close)
-            print("[OVERLAY] Close button created")
+        self.close_button = QtWidgets.QPushButton("×", self)
+        self.close_button.setFixedSize(26, 26)
+        self.close_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(60, 60, 60, 180);
+                border: 1px solid rgba(120, 120, 120, 120);
+                border-radius: 13px;
+                color: #FFFFFF;
+                font-weight: bold;
+                font-size: 20px;
+                font-family: Arial, sans-serif;
+                padding: 0px;
+                text-align: center;
+            }
+            QPushButton:hover {
+                background-color: rgba(80, 80, 80, 220);
+                border-color: rgba(160, 160, 160, 180);
+                color: #FFFFFF;
+            }
+            QPushButton:pressed {
+                background-color: rgba(100, 100, 100, 240);
+            }
+        """)
+        self.close_button.hide()  # Hidden by default
+        self.close_button.clicked.connect(self.close)
+        self.update_close_button_position()
 
-            # Position close button in top-right corner
-            print("[OVERLAY] Positioning close button")
-            self.update_close_button_position()
-            print("[OVERLAY] Close button positioned")
-        except Exception as e:
-            print(f"[OVERLAY ERROR] Failed to create close button: {e}")
-            import traceback
-            traceback.print_exc()
-
-        try:
-            print("[OVERLAY] Calling show()...")
-            self.show()
-            print("[OVERLAY] show() completed - overlay should be visible")
-        except Exception as e:
-            print(f"[OVERLAY ERROR] Failed to show overlay: {e}")
-            import traceback
-            traceback.print_exc()
-            raise
+        self.show()
 
     def update_close_button_position(self):
         """Update close button position to top-right corner."""

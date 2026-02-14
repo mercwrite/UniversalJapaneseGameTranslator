@@ -32,44 +32,85 @@ python main_ui.py
 
 ### Pipeline Flow
 
-1. **Window Capture** (`window_capture.py`) - Captures game window using Win32 GDI APIs
-2. **OCR** (`qwen_wrapper.py`) - Qwen2-VL-2B vision model extracts Japanese text
-3. **Translation** (`sugoi_wrapper.py`) - CTranslate2 translates Japanese to English
+1. **Window Capture** (`capture/window_capture.py`) - Captures game window using Win32 GDI APIs
+2. **OCR** (`ocr/qwen_wrapper.py`) - Qwen2-VL-2B vision model extracts Japanese text
+3. **Translation** (`translation/sugoi_wrapper.py`) - CTranslate2 translates Japanese to English
 4. **Display** (`ui/text_overlay.py`) - Shows translation in floating overlay window
+
+### Package Structure
+
+```
+project/
+├── main_ui.py                    # Application entry point
+├── error_handler.py              # Cross-cutting error handling utilities
+├── perf_logger.py                # Performance measurement
+│
+├── capture/                      # Window capture package
+│   ├── __init__.py               # Exports WindowCapture
+│   └── window_capture.py         # Win32 GDI screen capture
+│
+├── ocr/                          # OCR engine package
+│   ├── __init__.py               # Exports LocalVisionAI
+│   ├── qwen_wrapper.py           # Qwen2-VL-2B primary OCR engine
+│   ├── deepseek_wrapper.py       # DeepSeek OCR (unused)
+│   ├── rapid_wrapper.py          # RapidOCR (unused)
+│   ├── winocr_wrapper.py         # Windows native OCR (unused)
+│   └── image_processor.py        # Image preprocessing utilities
+│
+├── translation/                  # Translation engine package
+│   ├── __init__.py               # Exports SugoiTranslator
+│   └── sugoi_wrapper.py          # CTranslate2 + SentencePiece
+│
+└── ui/                           # UI package
+    ├── __init__.py
+    ├── controller.py             # Main controller window (orchestrator)
+    ├── text_overlay.py           # Floating translucent overlay windows
+    ├── snipper.py                # Screen region selection tool
+    ├── widgets.py                # Custom widgets (ModernComboBox, IconButton, OverlayListItem)
+    ├── styles.py                 # Dark theme stylesheet
+    └── pipeline.py               # TranslationPipeline class (OCR + translation loop)
+```
 
 ### Core Components
 
 **Entry Point**
 - `main_ui.py` - Application entry point with global exception handling
 
-**UI Package** (`ui/`)
-- `controller.py` - Main controller window (ControllerWindow class)
-  - Manages multiple overlay regions
-  - Handles window selection and translation start/stop
-  - Runs the translation pipeline on a 100ms timer
-- `text_overlay.py` - Floating translucent overlay windows (TextBoxOverlay class)
-- `snipper.py` - Screen region selection tool (Snipper class)
+**Capture Package** (`capture/`)
+- `window_capture.py` - WindowCapture class for Windows-specific screen capture
+  - Uses ctypes to interface with Win32 APIs (PrintWindow, BitBlt, GDI)
+  - Captures windows in background (doesn't require focus)
 
-**OCR/Translation Wrappers**
+**OCR Package** (`ocr/`)
 - `qwen_wrapper.py` - LocalVisionAI class wraps Qwen2-VL-2B-Instruct model
   - Primary OCR engine
   - Uses Hugging Face transformers
   - Supports both OCR-only and direct translation modes
+- `deepseek_wrapper.py`, `rapid_wrapper.py`, `winocr_wrapper.py` - Alternative OCR engines (currently unused)
+- `image_processor.py` - Image preprocessing utilities
+
+**Translation Package** (`translation/`)
 - `sugoi_wrapper.py` - SugoiTranslator class wraps CTranslate2 model
   - Primary translation engine
   - Separate Japanese/English SentencePiece tokenizers
-- `rapid_wrapper.py`, `deepseekocr_wrapper.py`, `winocr_wrapper.py` - Alternative OCR engines (currently unused)
 
-**Core Utilities**
-- `window_capture.py` - WindowCapture class for Windows-specific screen capture
-  - Uses ctypes to interface with Win32 APIs (PrintWindow, BitBlt, GDI)
-  - Captures windows in background (doesn't require focus)
+**UI Package** (`ui/`)
+- `controller.py` - Main controller window (ControllerWindow class)
+  - Manages multiple overlay regions
+  - Handles window selection and translation start/stop
+  - Delegates pipeline execution to TranslationPipeline
+- `text_overlay.py` - Floating translucent overlay windows (TextBoxOverlay class)
+- `snipper.py` - Screen region selection tool (Snipper class)
+- `widgets.py` - Custom Qt widgets (ModernComboBox, IconButton, OverlayListItem)
+- `styles.py` - Dark theme stylesheet constant and `apply_dark_styles()` function
+- `pipeline.py` - TranslationPipeline class with image diff and OCR/translation loop
+
+**Cross-cutting Utilities**
 - `error_handler.py` - Error handling infrastructure
   - `@safe_execute` decorator for graceful error handling
   - SafeWindowCapture utility class for validation
   - Centralized logging configuration
 - `perf_logger.py` - PerformanceLogger for measuring OCR/translation latency
-- `image_processor.py` - Image preprocessing utilities
 
 ### Key Design Patterns
 
@@ -92,7 +133,7 @@ self.active_regions[region_id] = {
 ```
 
 **Translation Pipeline**
-The `run_batch_pipeline()` method in `controller.py`:
+The `TranslationPipeline.run()` method in `ui/pipeline.py`:
 1. Captures full window screenshot
 2. For each enabled region:
    - Crops the region from full window
@@ -102,8 +143,8 @@ The `run_batch_pipeline()` method in `controller.py`:
    - Updates overlay with `overlay.update_text()`
 
 **PyQt6 Signals**
-- `region_selected` signal (Snipper → Controller)
-- `geometry_changed` signal (TextBoxOverlay → Controller)
+- `region_selected` signal (Snipper -> Controller)
+- `geometry_changed` signal (TextBoxOverlay -> Controller)
 
 ## Model Initialization
 
@@ -115,14 +156,14 @@ Both AI models are initialized in `ControllerWindow._initialize_backend()`:
 ## Development Notes
 
 ### Adding New OCR Engines
-Create a wrapper class following the pattern in `qwen_wrapper.py`:
+Create a wrapper class in the `ocr/` package following the pattern in `ocr/qwen_wrapper.py`:
 - Implement `analyze(pil_image, mode="ocr")` method
 - Decorate with `@safe_execute` for error handling
 - Validate images with `SafeWindowCapture.validate_image()`
 - Return empty string on errors
 
 ### Adding New Translation Engines
-Create a wrapper class following the pattern in `sugoi_wrapper.py`:
+Create a wrapper class in the `translation/` package following the pattern in `translation/sugoi_wrapper.py`:
 - Implement `translate(text)` method
 - Decorate with `@safe_execute`
 - Validate input text (non-empty strings)
@@ -143,25 +184,25 @@ The application uses Windows-specific APIs extensively:
 ## Common Tasks
 
 **Testing OCR/Translation Pipeline**
-Temporarily modify `controller.py` to:
+Temporarily modify `ui/controller.py` to:
 1. Load a test image instead of screen capture
 2. Call `vision_ai.analyze()` directly
 3. Print results to console
 
 **Debugging Window Capture Issues**
-Enable debug logging in `window_capture.py`:
+Enable debug logging in `capture/window_capture.py`:
 - Check `SafeWindowCapture.is_window_valid()` results
 - Verify window rect coordinates
 - Ensure PrintWindow fallback to BitBlt is working
 
 **Modifying UI Styling**
-All styles are defined in `ControllerWindow._apply_dark_styles()` using Qt CSS. The UI uses a black background with white borders and rounded corners throughout.
+All styles are defined in `ui/styles.py` as `DARK_THEME_STYLESHEET`. The UI uses a black background with white borders and rounded corners throughout.
 
 ## PyQt6 Specifics
 
 **Window Flags for Overlays**
 TextBoxOverlay uses specific flags to stay on top and be translucent:
-- Check `text_overlay.py` for frameless, always-on-top configuration
+- Check `ui/text_overlay.py` for frameless, always-on-top configuration
 - Opacity is controlled via `setWindowOpacity()` and background alpha
 
 **Qt Event Loop**

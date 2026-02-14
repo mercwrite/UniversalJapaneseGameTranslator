@@ -12,7 +12,7 @@ class DeepSeekLocalVisionAi:
     def analyze(self, pil_image, mode="ocr"):
         # prompt = "<image>\nFree OCR. "
         prompt = "<image>\n<|grounding|>Convert the document to markdown. "
-        
+
         if mode == "ocr":
             prompt = "Read the Japanese text in this image accurately. Output only the text."
         else:

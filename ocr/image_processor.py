@@ -5,9 +5,9 @@ from PIL import Image
 class ImagePreprocessor:
     @staticmethod
     def process(pil_image, upscale_factor=3.0, apply_filters=False):
-        # NOTE: Default upscale increased to 3.0. 
+        # NOTE: Default upscale increased to 3.0.
         # Windows OCR needs massive text to see the tiny dots correctly.
-        
+
         img = np.array(pil_image)
         if len(img.shape) == 3:
             gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)

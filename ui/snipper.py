@@ -52,12 +52,10 @@ class Snipper(QtWidgets.QWidget):
         self.update()
 
     def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:  # type: ignore[override]
-        print("[SNIPPER] Mouse released")
         rect = QtCore.QRect(self.begin, self.end).normalized()
 
         # Handle cases where user just clicked without dragging
         if rect.width() < 10 or rect.height() < 10:
-            print("[SNIPPER] Selection too small, hiding")
             self.hide()
             return
 
@@ -68,16 +66,7 @@ class Snipper(QtWidgets.QWidget):
             "height": int(rect.height()),
         }
 
-        print(f"[SNIPPER] About to emit region_selected with: {selection}")
-
-        try:
-            self.region_selected.emit(selection)
-            print("[SNIPPER] Signal emitted successfully (queued)")
-            print("[SNIPPER] Hiding (controller will delete us)...")
-        except Exception as e:
-            print(f"[SNIPPER ERROR] Failed to emit signal: {e}")
-            import traceback
-            traceback.print_exc()
+        self.region_selected.emit(selection)
 
         # Always hide (never close) - controller handles deletion
         self.hide()
