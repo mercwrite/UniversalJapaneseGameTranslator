@@ -6,8 +6,10 @@ from PyQt6 import QtWidgets, QtCore, QtGui
 
 from capture import WindowCapture
 from translation import SugoiTranslator
-from ocr import LocalVisionAI
+from ocr.manager import OCRManager, EngineType
+from ocr.preprocessing import PreprocessingPipeline
 from perf_logger import PerformanceLogger
+from preferences import Preferences
 
 from ui.text_overlay import TextBoxOverlay
 from ui.snipper import Snipper
@@ -38,9 +40,9 @@ class ControllerWindow(QtWidgets.QWidget):
         # Docking state
         self.is_expanded = False
         self.collapsed_width = 40
-        self.expanded_width = 520
+        self.expanded_width = 560
         self.tab_height = 100
-        self.window_height = 680
+        self.window_height = 720
 
         # Hover management
         self.hover_timer = QtCore.QTimer()
@@ -70,16 +72,30 @@ class ControllerWindow(QtWidgets.QWidget):
         self.win_cap = WindowCapture()
         self.perf = PerformanceLogger()
 
-        # Initialize backend
+        # Load user preferences
+        self.prefs = Preferences()
+
+        # Initialize backend (OCR manager + translator)
         path_to_model = "sugoi_model"
-        self.vision_ai = None
+        self.ocr_manager = None
         self.translator = None
         self._initialize_backend(path_to_model)
 
+        # Apply saved preferences to backend
+        self._apply_saved_preferences()
+
         # Create pipeline
         self.pipeline = TranslationPipeline(
-            self.win_cap, self.vision_ai, self.translator, self.perf
+            self.win_cap, self.ocr_manager, self.translator, self.perf
         )
+
+        # Initialize timer (before UI so settings page can connect to it)
+        self.timer = QtCore.QTimer()
+        self.timer.setInterval(self.prefs.pipeline_interval)
+        self.timer.timeout.connect(self._run_pipeline)
+
+        # Track if translation is running
+        self.is_running = False
 
         # Apply dark theme styling
         apply_dark_styles(self)
@@ -106,20 +122,102 @@ class ControllerWindow(QtWidgets.QWidget):
             }
         """)
         content_layout = QtWidgets.QVBoxLayout()
-        content_layout.setSpacing(16)
-        content_layout.setContentsMargins(20, 20, 20, 20)
+        content_layout.setSpacing(0)
+        content_layout.setContentsMargins(20, 12, 20, 20)
 
-        # Top Section: Overlay List Container
+        # ── Navigation bar ──
+        nav_bar_widget = QtWidgets.QWidget()
+        nav_bar_widget.setFixedHeight(44)
+        nav_layout = QtWidgets.QHBoxLayout()
+        nav_layout.setContentsMargins(4, 4, 4, 4)
+        nav_layout.setSpacing(4)
+
+        nav_btn_style = """
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                border-radius: 8px;
+            }
+            QPushButton:hover {
+                background-color: rgba(70, 70, 70, 150);
+            }
+        """
+
+        self.nav_btn_main = IconButton("home", size=36)
+        self.nav_btn_main.setStyleSheet(nav_btn_style)
+        self.nav_btn_main.setToolTip("Main")
+        self.nav_btn_main.clicked.connect(lambda: self._switch_page(0))
+        nav_layout.addWidget(self.nav_btn_main)
+
+        self.nav_btn_preprocess = IconButton("image-edit", size=36)
+        self.nav_btn_preprocess.setStyleSheet(nav_btn_style)
+        self.nav_btn_preprocess.setToolTip("Preprocessing")
+        self.nav_btn_preprocess.clicked.connect(lambda: self._switch_page(1))
+        nav_layout.addWidget(self.nav_btn_preprocess)
+
+        self.nav_btn_settings = IconButton("gear", size=36)
+        self.nav_btn_settings.setStyleSheet(nav_btn_style)
+        self.nav_btn_settings.setToolTip("Settings")
+        self.nav_btn_settings.clicked.connect(lambda: self._switch_page(2))
+        nav_layout.addWidget(self.nav_btn_settings)
+
+        nav_layout.addStretch()
+        nav_bar_widget.setLayout(nav_layout)
+        content_layout.addWidget(nav_bar_widget)
+
+        # Separator line
+        separator = QtWidgets.QFrame()
+        separator.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        separator.setFixedHeight(1)
+        separator.setStyleSheet("background-color: #404040; border: none;")
+        content_layout.addWidget(separator)
+
+        # ── Page stack ──
+        self.page_stack = QtWidgets.QStackedWidget()
+
+        # Page 0: Main page (overlay list + actions + window)
+        main_page = QtWidgets.QWidget()
+        main_page_layout = QtWidgets.QVBoxLayout()
+        main_page_layout.setSpacing(16)
+        main_page_layout.setContentsMargins(0, 12, 0, 0)
+
         overlay_list_section = self._create_overlay_list_section()
-        content_layout.addWidget(overlay_list_section, 1)
+        main_page_layout.addWidget(overlay_list_section, 1)
 
-        # Middle Section: Actions & Settings
         actions_section = self._create_actions_section()
-        content_layout.addWidget(actions_section, 0)
+        main_page_layout.addWidget(actions_section, 0)
 
-        # Bottom Section: Window Selection
         window_section = self._create_window_section()
-        content_layout.addWidget(window_section, 0)
+        main_page_layout.addWidget(window_section, 0)
+
+        main_page.setLayout(main_page_layout)
+        self.page_stack.addWidget(main_page)
+
+        # Page 1: Preprocessing editor
+        from ui.preprocessing_editor import PreprocessingEditorWidget
+        self.preprocess_page = PreprocessingEditorWidget(
+            self.ocr_manager,
+            capture_callback=self._get_region_crop,
+            get_regions_callback=self._get_active_region_list,
+            on_pipeline_changed=self._save_preprocessing_prefs,
+        )
+        self.page_stack.addWidget(self.preprocess_page)
+
+        # Page 2: Settings
+        from ui.settings_page import SettingsPageWidget
+        self.settings_page = SettingsPageWidget(self.ocr_manager)
+        self.settings_page.engine_changed.connect(self._on_engine_changed_from_settings)
+        self.settings_page.interval_changed.connect(self._on_interval_changed)
+        self.settings_page.preprocess_toggled.connect(
+            lambda etype_val, enabled: self.prefs.set_preprocess_for_engine(etype_val, enabled)
+        )
+        self.settings_page.exit_requested.connect(self._exit_application)
+        self.settings_page.set_translator_loaded(self.translator is not None)
+        self.settings_page.set_interval(self.prefs.pipeline_interval)
+        self.page_stack.addWidget(self.settings_page)
+
+        self.page_stack.setCurrentIndex(0)
+        content_layout.addWidget(self.page_stack, 1)
 
         self.content_widget.setLayout(content_layout)
         self.content_widget.hide()  # Hidden initially
@@ -127,13 +225,8 @@ class ControllerWindow(QtWidgets.QWidget):
 
         self.setLayout(container_layout)
 
-        # Initialize timer
-        self.timer = QtCore.QTimer()
-        self.timer.setInterval(100)  # ms
-        self.timer.timeout.connect(self._run_pipeline)
-
-        # Track if translation is running
-        self.is_running = False
+        # Set initial nav button active state
+        self._switch_page(0)
 
         # Position window on right edge after a short delay
         QtCore.QTimer.singleShot(100, self._position_on_right_edge)
@@ -260,6 +353,35 @@ class ControllerWindow(QtWidgets.QWidget):
 
         # Hide content after animation
         QtCore.QTimer.singleShot(self.animation.duration(), self.content_widget.hide)
+
+    def _switch_page(self, index: int) -> None:
+        """Switch visible page and update nav button states."""
+        self.page_stack.setCurrentIndex(index)
+        # Refresh overlay list when switching to preprocessing page
+        if index == 1 and hasattr(self, 'preprocess_page'):
+            self.preprocess_page.refresh_overlay_list()
+        for i, btn in enumerate([self.nav_btn_main, self.nav_btn_preprocess,
+                                  self.nav_btn_settings]):
+            if i == index:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: rgba(60, 60, 60, 200);
+                        border: none;
+                        border-radius: 8px;
+                        border-bottom: 2px solid #5A9FD4;
+                    }
+                """)
+            else:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: transparent;
+                        border: none;
+                        border-radius: 8px;
+                    }
+                    QPushButton:hover {
+                        background-color: rgba(70, 70, 70, 150);
+                    }
+                """)
 
     def _create_overlay_list_section(self) -> QtWidgets.QWidget:
         """Create the overlay list container section."""
@@ -434,13 +556,42 @@ class ControllerWindow(QtWidgets.QWidget):
         return container
 
     def _initialize_backend(self, path_to_model: str) -> None:
-        """Safely initialize backend components."""
-        try:
-            self.vision_ai = LocalVisionAI()
-        except Exception as e:
-            print(f"Warning: Failed to initialize Vision AI: {e}")
-            self.vision_ai = None
+        """Initialize OCR manager with engines and translation backend."""
+        self.ocr_manager = OCRManager()
 
+        # Register lightweight engine (always available, CPU-friendly)
+        try:
+            from ocr.manga_ocr_engine import MangaOCREngine
+            manga_engine = MangaOCREngine(device="auto", force_cpu=False)
+            self.ocr_manager.register_engine(EngineType.LIGHTWEIGHT, manga_engine)
+        except Exception as e:
+            print(f"Warning: Failed to register manga-ocr: {e}")
+
+        # Register VLM engine (only if NVIDIA GPU with CUDA is available)
+        has_cuda = False
+        try:
+            import torch
+            has_cuda = torch.cuda.is_available()
+        except ImportError:
+            pass
+
+        if has_cuda:
+            try:
+                from ocr.vlm_engine import QwenVLMEngine
+                vlm_engine = QwenVLMEngine()
+                self.ocr_manager.register_engine(EngineType.VLM, vlm_engine)
+            except Exception as e:
+                print(f"Warning: Failed to register Qwen VLM: {e}")
+        else:
+            print("Info: Qwen VLM not available (no NVIDIA GPU with CUDA detected)")
+
+        # Default to lightweight
+        try:
+            self.ocr_manager.set_engine(EngineType.LIGHTWEIGHT)
+        except ValueError:
+            print("Warning: No OCR engines available!")
+
+        # Translator (unchanged logic)
         try:
             self.translator = SugoiTranslator(path_to_model, device="auto")
         except Exception as e:
@@ -764,6 +915,123 @@ class ControllerWindow(QtWidgets.QWidget):
                 pass
         except Exception:
             pass
+
+    # ---- Preferences ----
+
+    def _apply_saved_preferences(self) -> None:
+        """Apply loaded preferences to backend components."""
+        if not self.ocr_manager:
+            return
+        # Restore engine selection
+        try:
+            saved_engine = EngineType(self.prefs.engine_type)
+            if saved_engine in self.ocr_manager._engines:
+                self.ocr_manager.set_engine(saved_engine)
+        except (ValueError, KeyError):
+            pass
+
+        # Restore per-engine preprocessing toggles
+        for etype in EngineType:
+            val = self.prefs.get_preprocess_for_engine(etype.value)
+            if val is not None:
+                self.ocr_manager._preprocess_by_engine[etype] = val
+
+        # Restore preprocessing pipeline
+        saved_pipeline = self.prefs.preprocessing_pipeline
+        if saved_pipeline is not None:
+            try:
+                self.ocr_manager.pipeline = PreprocessingPipeline.from_dict(saved_pipeline)
+            except Exception as e:
+                print(f"Warning: Failed to restore preprocessing pipeline: {e}")
+
+    def _save_preprocessing_prefs(self) -> None:
+        """Save current preprocessing pipeline to preferences."""
+        if self.ocr_manager:
+            self.prefs.preprocessing_pipeline = self.ocr_manager.pipeline.to_dict()
+
+    def _on_interval_changed(self, value: int) -> None:
+        """Handle pipeline interval change from settings page."""
+        self.timer.setInterval(value)
+        self.prefs.pipeline_interval = value
+
+    def _exit_application(self) -> None:
+        """Clean shutdown of the application."""
+        # Stop translation
+        self.timer.stop()
+        self.mouse_check_timer.stop()
+        self.hover_timer.stop()
+
+        # Close all overlays
+        for rid, data in list(self.active_regions.items()):
+            try:
+                overlay = data.get("overlay")
+                if overlay:
+                    overlay.close()
+            except Exception:
+                pass
+
+        # Unload OCR engines
+        if self.ocr_manager:
+            self.ocr_manager.unload_all()
+
+        QtWidgets.QApplication.quit()
+
+    # ---- Engine change from settings ----
+
+    def _on_engine_changed_from_settings(self, engine_type_value: int) -> None:
+        """Handle OCR engine change from settings page."""
+        try:
+            engine_type = EngineType(engine_type_value)
+            self.ocr_manager.set_engine(engine_type)
+            self.prefs.engine_type = engine_type_value
+        except Exception as e:
+            print(f"Failed to switch engine: {e}")
+
+    # ---- Preview capture helpers ----
+
+    def _get_active_region_list(self) -> list[tuple[str, str]]:
+        """Return (region_id, display_name) for all active regions."""
+        result = []
+        for rid, data in self.active_regions.items():
+            item = data.get("item")
+            name = item.name_label.text() if item and hasattr(item, "name_label") else f"Overlay {rid}"
+            result.append((rid, name))
+        return result
+
+    def _get_region_crop(self, region_id: str):
+        """Capture and crop a specific region by its ID."""
+        try:
+            if region_id not in self.active_regions:
+                return None
+            if not self.win_cap or not SafeWindowCapture.is_window_valid(self.win_cap.hwnd):
+                return None
+
+            full_img = self.win_cap.screenshot()
+            if not SafeWindowCapture.validate_image(full_img):
+                return None
+
+            win_x, win_y, win_w, win_h = self.win_cap.get_window_rect()
+
+            rect = self.active_regions[region_id].get("rect")
+            if not rect or not validate_region_data(rect):
+                return None
+
+            rel_x = rect["left"] - win_x
+            rel_y = rect["top"] - win_y
+            rel_w = rect["width"]
+            rel_h = rect["height"]
+
+            if rel_x < 0 or rel_y < 0:
+                return None
+            if rel_x + rel_w > win_w or rel_y + rel_h > win_h:
+                return None
+
+            crop = full_img.crop((rel_x, rel_y, rel_x + rel_w, rel_y + rel_h))
+            if SafeWindowCapture.validate_image(crop):
+                return crop
+            return None
+        except Exception:
+            return None
 
     # ---- Pipeline ----
 

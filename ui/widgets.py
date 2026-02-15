@@ -155,6 +155,57 @@ class IconButton(QtWidgets.QPushButton):
             painter.drawLine(center_x - 2, center_y - 6, center_x + 3, center_y)
             painter.drawLine(center_x + 3, center_y, center_x - 2, center_y + 6)
 
+        elif self.icon_type == "gear":
+            # Draw gear/cog icon
+            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+            # Outer circle (gear body)
+            painter.drawEllipse(center_x - 6, center_y - 6, 12, 12)
+            # Inner circle (hole)
+            painter.setBrush(QtGui.QColor(220, 220, 220))
+            painter.drawEllipse(center_x - 2, center_y - 2, 4, 4)
+            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+            # Teeth: 6 short lines radiating outward at 60-degree intervals
+            import math
+            for angle_deg in range(0, 360, 60):
+                rad = math.radians(angle_deg)
+                x1 = center_x + int(6 * math.cos(rad))
+                y1 = center_y + int(6 * math.sin(rad))
+                x2 = center_x + int(9 * math.cos(rad))
+                y2 = center_y + int(9 * math.sin(rad))
+                painter.drawLine(x1, y1, x2, y2)
+
+        elif self.icon_type == "image-edit":
+            # Draw image frame with pencil overlay
+            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+            # Image frame (rectangle)
+            painter.drawRect(center_x - 8, center_y - 6, 12, 12)
+            # Mountain shape inside (simple triangle)
+            mountain = QtGui.QPolygon([
+                QtCore.QPoint(center_x - 6, center_y + 4),
+                QtCore.QPoint(center_x - 2, center_y - 1),
+                QtCore.QPoint(center_x + 2, center_y + 4),
+            ])
+            painter.drawPolyline(mountain)
+            # Pencil (diagonal line in bottom-right)
+            painter.drawLine(center_x + 2, center_y + 7, center_x + 9, center_y)
+            # Pencil tip
+            painter.drawLine(center_x + 9, center_y, center_x + 7, center_y + 1)
+
+        elif self.icon_type == "home":
+            # Draw house icon
+            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+            # Roof (triangle)
+            roof = QtGui.QPolygon([
+                QtCore.QPoint(center_x, center_y - 8),
+                QtCore.QPoint(center_x - 9, center_y - 1),
+                QtCore.QPoint(center_x + 9, center_y - 1),
+            ])
+            painter.drawPolygon(roof)
+            # House body (rectangle)
+            painter.drawRect(center_x - 6, center_y - 1, 12, 9)
+            # Door (small rectangle)
+            painter.drawRect(center_x - 2, center_y + 2, 4, 6)
+
 
 class OverlayListItem(QtWidgets.QWidget):
     """Custom widget for overlay list items with name, toggle, and delete button."""

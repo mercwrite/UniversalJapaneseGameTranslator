@@ -10,7 +10,7 @@ from error_handler import safe_execute, SafeWindowCapture, validate_region_data
 
 if TYPE_CHECKING:
     from capture.window_capture import WindowCapture
-    from ocr.qwen_wrapper import LocalVisionAI
+    from ocr.manager import OCRManager
     from translation.sugoi_wrapper import SugoiTranslator
     from perf_logger import PerformanceLogger
 
@@ -21,12 +21,12 @@ class TranslationPipeline:
     def __init__(
         self,
         win_cap: WindowCapture,
-        vision_ai: LocalVisionAI | None,
+        ocr_manager: OCRManager | None,
         translator: SugoiTranslator | None,
         perf: PerformanceLogger,
     ):
         self.win_cap = win_cap
-        self.vision_ai = vision_ai
+        self.ocr_manager = ocr_manager
         self.translator = translator
         self.perf = perf
 
@@ -77,7 +77,7 @@ class TranslationPipeline:
             if not self.win_cap or not SafeWindowCapture.is_window_valid(self.win_cap.hwnd):
                 return
 
-            if not self.vision_ai or not self.translator:
+            if not self.ocr_manager or not self.translator:
                 return
 
             self.perf.start_cycle()
@@ -133,9 +133,11 @@ class TranslationPipeline:
 
                     try:
                         self.perf.start_ocr()
-                        jap_text = self.vision_ai.analyze(current_crop, mode="ocr")
-                        if not jap_text or not isinstance(jap_text, str):
+                        ocr_result = self.ocr_manager.process(current_crop)
+                        if ocr_result.is_empty:
                             continue
+                        jap_text = ocr_result.text
+                        print(f"[OCR] {ocr_result.engine_name}: {ocr_result.processing_time_ms:.0f}ms")
                     except Exception as e:
                         print(f"OCR error for region {rid}: {e}")
                         continue
