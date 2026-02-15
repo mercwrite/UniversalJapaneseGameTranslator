@@ -6,12 +6,16 @@ class TextBoxOverlay(QtWidgets.QLabel):
     # Signal emitted when position or size changes
     geometry_changed = QtCore.pyqtSignal(int, int, int, int)  # x, y, width, height
 
-    def __init__(self, x, y, w, h, initial_opacity=200):
+    def __init__(self, x, y, w, h, initial_opacity=200, bg_color="#0D0D0D", text_color="#EEEEEE"):
         super().__init__()
         self.setGeometry(x, y, w, h)
 
         # State variable to hold opacity
         self.bg_opacity = initial_opacity
+
+        # Custom colors
+        self.bg_color = QtGui.QColor(bg_color)
+        self.text_color = text_color
 
         # Window Flags - frameless
         self.setWindowFlags(
@@ -39,16 +43,8 @@ class TextBoxOverlay(QtWidgets.QLabel):
         self.setWordWrap(True)
         self.setText("Translated Text Goes Here...")
 
-        # Set white text style
-        self.setStyleSheet("""
-            color: #EEEEEE;
-            font-size: 14px;
-            font-weight: 400;
-            font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
-            padding: 12px 16px;
-            line-height: 1.5;
-            background-color: transparent;
-        """)
+        # Set text style with custom color
+        self._apply_text_style()
 
         # Enable mouse tracking for hover effects
         self.setMouseTracking(True)
@@ -120,6 +116,29 @@ class TextBoxOverlay(QtWidgets.QLabel):
             self.update()
         except Exception:
             pass
+
+    def _apply_text_style(self) -> None:
+        """Apply text stylesheet with current text color."""
+        self.setStyleSheet(f"""
+            color: {self.text_color};
+            font-size: 14px;
+            font-weight: 400;
+            font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+            padding: 12px 16px;
+            line-height: 1.5;
+            background-color: transparent;
+        """)
+
+    def set_bg_color(self, color_hex: str) -> None:
+        """Update the overlay background color."""
+        self.bg_color = QtGui.QColor(color_hex)
+        self.update()
+
+    def set_text_color(self, color_hex: str) -> None:
+        """Update the overlay text color."""
+        self.text_color = color_hex
+        self._apply_text_style()
+        self.update()
 
     @safe_execute(default_return=None, log_errors=False, error_message="Failed to update text")
     def update_text(self, text: str) -> None:
@@ -296,8 +315,8 @@ class TextBoxOverlay(QtWidgets.QLabel):
 
             painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
 
-            # Semi-transparent dark background
-            brush_color = QtGui.QColor(13, 13, 13, self.bg_opacity)
+            # Semi-transparent background with custom color
+            brush_color = QtGui.QColor(self.bg_color.red(), self.bg_color.green(), self.bg_color.blue(), self.bg_opacity)
             painter.setBrush(QtGui.QBrush(brush_color))
 
             # Border color - highlight if hovering over resize edge or dragging

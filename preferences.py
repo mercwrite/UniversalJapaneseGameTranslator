@@ -18,6 +18,8 @@ _DEFAULTS: dict[str, Any] = {
         "1": False,
     },
     "preprocessing_pipeline": None,  # None means use defaults
+    "overlay_bg_color": "#0D0D0D",      # Overlay background color (hex)
+    "overlay_text_color": "#EEEEEE",    # Overlay text color (hex)
 }
 
 
@@ -74,6 +76,24 @@ class Preferences:
     @preprocessing_pipeline.setter
     def preprocessing_pipeline(self, value: list[dict] | None) -> None:
         self._data["preprocessing_pipeline"] = value
+        self.save()
+
+    @property
+    def overlay_bg_color(self) -> str:
+        return self._data.get("overlay_bg_color", _DEFAULTS["overlay_bg_color"])
+
+    @overlay_bg_color.setter
+    def overlay_bg_color(self, value: str) -> None:
+        self._data["overlay_bg_color"] = value
+        self.save()
+
+    @property
+    def overlay_text_color(self) -> str:
+        return self._data.get("overlay_text_color", _DEFAULTS["overlay_text_color"])
+
+    @overlay_text_color.setter
+    def overlay_text_color(self, value: str) -> None:
+        self._data["overlay_text_color"] = value
         self.save()
 
     # ── persistence ──

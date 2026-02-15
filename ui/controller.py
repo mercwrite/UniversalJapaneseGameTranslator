@@ -212,8 +212,11 @@ class ControllerWindow(QtWidgets.QWidget):
             lambda etype_val, enabled: self.prefs.set_preprocess_for_engine(etype_val, enabled)
         )
         self.settings_page.exit_requested.connect(self._exit_application)
+        self.settings_page.overlay_bg_color_changed.connect(self._on_overlay_bg_color_changed)
+        self.settings_page.overlay_text_color_changed.connect(self._on_overlay_text_color_changed)
         self.settings_page.set_translator_loaded(self.translator is not None)
         self.settings_page.set_interval(self.prefs.pipeline_interval)
+        self.settings_page.set_overlay_colors(self.prefs.overlay_bg_color, self.prefs.overlay_text_color)
         self.page_stack.addWidget(self.settings_page)
 
         self.page_stack.setCurrentIndex(0)
@@ -228,8 +231,10 @@ class ControllerWindow(QtWidgets.QWidget):
         # Set initial nav button active state
         self._switch_page(0)
 
-        # Position window on right edge after a short delay
-        QtCore.QTimer.singleShot(100, self._position_on_right_edge)
+        # Position window on right edge immediately (before show())
+        self._position_on_right_edge()
+        # Start mouse tracking after a short delay to ensure window is fully rendered
+        QtCore.QTimer.singleShot(100, self.mouse_check_timer.start)
 
     def _create_tab_widget(self) -> QtWidgets.QWidget:
         """Create the tab widget shown when collapsed - small button."""
@@ -273,8 +278,6 @@ class ControllerWindow(QtWidgets.QWidget):
         x = screen.width() - self.collapsed_width
         y = (screen.height() - self.tab_height) // 2
         self.move(x, y)
-        # Start checking mouse position
-        self.mouse_check_timer.start()
 
     def enterEvent(self, event: QtCore.QEvent) -> None:
         """Handle mouse entering the widget."""
@@ -521,14 +524,13 @@ class ControllerWindow(QtWidgets.QWidget):
         # ComboBox with placeholder
         self.combo_games = ModernComboBox()
         self.combo_games.setEditable(True)
-        self.combo_games.lineEdit().setPlaceholderText("Selected Window Here...")
+        self.combo_games.lineEdit().setPlaceholderText("Select a window...")
         self.combo_games.lineEdit().setReadOnly(True)
+        self.combo_games.currentIndexChanged.connect(self.select_game_window)
         window_names = self.win_cap.list_window_names()
         if window_names:
             self.combo_games.addItems(window_names)
-        else:
-            self.combo_games.addItem("No windows available")
-        self.combo_games.currentIndexChanged.connect(self.select_game_window)
+        self.combo_games.setCurrentIndex(-1)
         selection_layout.addWidget(self.combo_games, 1)  # Stretch factor
 
         # Refresh button with circular arrows icon
@@ -602,46 +604,39 @@ class ControllerWindow(QtWidgets.QWidget):
 
     @safe_execute(default_return=None, log_errors=False, error_message="Failed to update opacity")
     def update_opacity(self, value=None) -> None:
-        try:
-            current_val = self.slider_opacity.value()  # 0-255
-            percentage = int(current_val / 255 * 100)
-            self.lbl_opacity.setText(f"{percentage}%")
+        current_val = self.slider_opacity.value()  # 0-255
+        percentage = int(current_val / 255 * 100)
+        self.lbl_opacity.setText(f"{percentage}%")
 
-            # Only update opacity for enabled overlays
-            for rid, data in list(self.active_regions.items()):
-                try:
-                    if self.is_region_enabled(rid) and "overlay" in data:
-                        overlay = data["overlay"]
-                        if overlay:
-                            overlay.set_background_opacity(current_val)
-                except Exception:
-                    continue
-        except Exception:
-            pass
+        # Only update opacity for enabled overlays
+        for rid, data in list(self.active_regions.items()):
+            if self.is_region_enabled(rid) and "overlay" in data:
+                overlay = data["overlay"]
+                if overlay:
+                    overlay.set_background_opacity(current_val)
 
     @safe_execute(default_return=None, log_errors=True, error_message="Failed to refresh window list")
     def refresh_window_list(self, checked=None) -> None:
+        previous = self.combo_games.currentText()
+        self.combo_games.blockSignals(True)
         try:
-            current = self.combo_games.currentText()
             self.combo_games.clear()
             window_names = self.win_cap.list_window_names()
             if window_names:
                 self.combo_games.addItems(window_names)
-                try:
-                    self.combo_games.setCurrentText(current)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+            idx = self.combo_games.findText(previous) if previous else -1
+            self.combo_games.setCurrentIndex(idx)
+        finally:
+            self.combo_games.blockSignals(False)
+        # Only trigger selection if it actually changed
+        if self.combo_games.currentText() != previous:
+            self.select_game_window()
 
     @safe_execute(default_return=None, log_errors=True, error_message="Failed to select game window")
     def select_game_window(self, index=None) -> None:
-        try:
-            title = self.combo_games.currentText()
-            if title:
-                self.win_cap.set_window_by_title(title)
-        except Exception:
-            pass
+        title = self.combo_games.currentText()
+        if title:
+            self.win_cap.set_window_by_title(title)
 
     @safe_execute(default_return=None, log_errors=True, error_message="Failed to activate snipper")
     def activate_snipper(self, checked: bool = False) -> None:
@@ -739,6 +734,8 @@ class ControllerWindow(QtWidgets.QWidget):
                     area["width"],
                     area["height"],
                     initial_opacity=self.slider_opacity.value(),
+                    bg_color=self.prefs.overlay_bg_color,
+                    text_color=self.prefs.overlay_text_color,
                 )
             except Exception:
                 return
@@ -823,11 +820,6 @@ class ControllerWindow(QtWidgets.QWidget):
                 del self.last_images[region_id]
         except Exception:
             pass
-
-    @safe_execute(default_return=None, log_errors=True, error_message="Failed to delete region")
-    def delete_region(self) -> None:
-        """Legacy method - kept for compatibility."""
-        pass
 
     def toggle_translation(self, checked=None) -> None:
         """Toggle translation on/off."""
@@ -953,6 +945,22 @@ class ControllerWindow(QtWidgets.QWidget):
         """Handle pipeline interval change from settings page."""
         self.timer.setInterval(value)
         self.prefs.pipeline_interval = value
+
+    def _on_overlay_bg_color_changed(self, color_hex: str) -> None:
+        """Handle overlay background color change from settings."""
+        self.prefs.overlay_bg_color = color_hex
+        for data in self.active_regions.values():
+            overlay = data.get("overlay")
+            if overlay:
+                overlay.set_bg_color(color_hex)
+
+    def _on_overlay_text_color_changed(self, color_hex: str) -> None:
+        """Handle overlay text color change from settings."""
+        self.prefs.overlay_text_color = color_hex
+        for data in self.active_regions.values():
+            overlay = data.get("overlay")
+            if overlay:
+                overlay.set_text_color(color_hex)
 
     def _exit_application(self) -> None:
         """Clean shutdown of the application."""

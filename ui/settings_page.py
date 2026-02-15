@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6 import QtWidgets, QtCore
+from PyQt6 import QtWidgets, QtCore, QtGui
 
 from ui.widgets import ModernComboBox
 
@@ -18,6 +18,8 @@ class SettingsPageWidget(QtWidgets.QWidget):
     engine_changed = QtCore.pyqtSignal(int)
     interval_changed = QtCore.pyqtSignal(int)
     preprocess_toggled = QtCore.pyqtSignal(int, bool)  # (engine_type_value, enabled)
+    overlay_bg_color_changed = QtCore.pyqtSignal(str)    # hex color
+    overlay_text_color_changed = QtCore.pyqtSignal(str)  # hex color
     exit_requested = QtCore.pyqtSignal()
 
     def __init__(self, ocr_manager: OCRManager, parent=None):
@@ -132,7 +134,48 @@ class SettingsPageWidget(QtWidgets.QWidget):
         perf_layout.addLayout(slider_row)
         layout.addWidget(perf_section)
 
-        # ── Section 4: About ──
+        # ── Section 4: Overlay Colors ──
+        color_section = self._create_section("Overlay Colors")
+        color_layout = color_section.layout()
+
+        # Background color row
+        bg_row = QtWidgets.QHBoxLayout()
+        bg_row.setContentsMargins(0, 0, 0, 0)
+        bg_row.setSpacing(12)
+
+        bg_label = QtWidgets.QLabel("Background Color")
+        bg_label.setStyleSheet(
+            "color: #CCCCCC; background-color: transparent; font-size: 11px;"
+        )
+        bg_row.addWidget(bg_label)
+        bg_row.addStretch()
+
+        self.bg_color_swatch = ColorSwatch("#0D0D0D")
+        self.bg_color_swatch.clicked.connect(self._pick_bg_color)
+        bg_row.addWidget(self.bg_color_swatch)
+
+        color_layout.addLayout(bg_row)
+
+        # Text color row
+        text_row = QtWidgets.QHBoxLayout()
+        text_row.setContentsMargins(0, 0, 0, 0)
+        text_row.setSpacing(12)
+
+        text_label = QtWidgets.QLabel("Text Color")
+        text_label.setStyleSheet(
+            "color: #CCCCCC; background-color: transparent; font-size: 11px;"
+        )
+        text_row.addWidget(text_label)
+        text_row.addStretch()
+
+        self.text_color_swatch = ColorSwatch("#EEEEEE")
+        self.text_color_swatch.clicked.connect(self._pick_text_color)
+        text_row.addWidget(self.text_color_swatch)
+
+        color_layout.addLayout(text_row)
+        layout.addWidget(color_section)
+
+        # ── Section 5: About ──
         about_label = QtWidgets.QLabel("Universal Japanese Game Translator v0.1")
         about_label.setStyleSheet(
             "color: #CCCCCC; background-color: transparent; font-size: 11px;"
@@ -275,3 +318,62 @@ class SettingsPageWidget(QtWidgets.QWidget):
             self.translator_status.setStyleSheet(
                 "color: #FF6B6B; background-color: transparent; font-size: 11px; padding: 2px 0px;"
             )
+
+    def set_overlay_colors(self, bg_color: str, text_color: str) -> None:
+        """Set the color swatches to reflect saved preferences."""
+        self.bg_color_swatch.set_color(bg_color)
+        self.text_color_swatch.set_color(text_color)
+
+    def _pick_bg_color(self) -> None:
+        """Open color picker for overlay background color."""
+        current = QtGui.QColor(self.bg_color_swatch.color)
+        color = QtWidgets.QColorDialog.getColor(
+            current, self, "Overlay Background Color",
+            QtWidgets.QColorDialog.ColorDialogOption.DontUseNativeDialog
+        )
+        if color.isValid():
+            hex_color = color.name()
+            self.bg_color_swatch.set_color(hex_color)
+            self.overlay_bg_color_changed.emit(hex_color)
+
+    def _pick_text_color(self) -> None:
+        """Open color picker for overlay text color."""
+        current = QtGui.QColor(self.text_color_swatch.color)
+        color = QtWidgets.QColorDialog.getColor(
+            current, self, "Overlay Text Color",
+            QtWidgets.QColorDialog.ColorDialogOption.DontUseNativeDialog
+        )
+        if color.isValid():
+            hex_color = color.name()
+            self.text_color_swatch.set_color(hex_color)
+            self.overlay_text_color_changed.emit(hex_color)
+
+
+class ColorSwatch(QtWidgets.QPushButton):
+    """A small clickable rectangle that displays a color."""
+
+    def __init__(self, color: str = "#FFFFFF", parent=None):
+        super().__init__(parent)
+        self.color = color
+        self.setFixedSize(36, 24)
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self._apply_style()
+
+    def set_color(self, color: str) -> None:
+        self.color = color
+        self._apply_style()
+
+    def _apply_style(self) -> None:
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.color};
+                border: 1px solid #606060;
+                border-radius: 4px;
+                min-height: 0px;
+                padding: 0px;
+            }}
+            QPushButton:hover {{
+                border-color: #909090;
+                border-width: 2px;
+            }}
+        """)
