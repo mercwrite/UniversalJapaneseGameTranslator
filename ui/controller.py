@@ -208,7 +208,7 @@ class ControllerWindow(QtWidgets.QWidget):
 
         # Page 2: Settings
         from ui.settings_page import SettingsPageWidget
-        self.settings_page = SettingsPageWidget(self.ocr_manager)
+        self.settings_page = SettingsPageWidget(self.ocr_manager, has_cuda=self._has_cuda)
         self.settings_page.engine_changed.connect(self._on_engine_changed_from_settings)
         self.settings_page.interval_changed.connect(self._on_interval_changed)
         self.settings_page.preprocess_toggled.connect(
@@ -588,14 +588,14 @@ class ControllerWindow(QtWidgets.QWidget):
             print(f"Warning: Failed to register manga-ocr: {e}")
 
         # Register VLM engine (only if NVIDIA GPU with CUDA is available)
-        has_cuda = False
+        self._has_cuda = False
         try:
             import torch
-            has_cuda = torch.cuda.is_available()
+            self._has_cuda = torch.cuda.is_available()
         except ImportError:
             pass
 
-        if has_cuda:
+        if self._has_cuda:
             try:
                 from ocr.vlm_engine import QwenVLMEngine
                 vlm_engine = QwenVLMEngine()

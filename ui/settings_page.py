@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 
-from ui.widgets import ModernComboBox
-
 if TYPE_CHECKING:
     from ocr.manager import OCRManager
 
@@ -22,9 +20,10 @@ class SettingsPageWidget(QtWidgets.QWidget):
     overlay_text_color_changed = QtCore.pyqtSignal(str)  # hex color
     exit_requested = QtCore.pyqtSignal()
 
-    def __init__(self, ocr_manager: OCRManager, parent=None):
+    def __init__(self, ocr_manager: OCRManager, has_cuda: bool = False, parent=None):
         super().__init__(parent)
         self._ocr_manager = ocr_manager
+        self._has_cuda = has_cuda
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -36,26 +35,74 @@ class SettingsPageWidget(QtWidgets.QWidget):
         engine_section = self._create_section("OCR Engine")
         engine_layout = engine_section.layout()
 
-        # Engine selector
-        self.engine_combo = ModernComboBox()
-        for etype, name, requires_gpu in self._ocr_manager.available_engines():
-            self.engine_combo.addItem(name, etype.value)
+        # Radio button style
+        radio_style = (
+            "QRadioButton { color: #CCCCCC; background-color: transparent; "
+            "font-size: 11px; spacing: 6px; }"
+            "QRadioButton::indicator { width: 14px; height: 14px; }"
+            "QRadioButton::indicator:unchecked { "
+            "  border: 2px solid #606060; border-radius: 8px; background-color: transparent; }"
+            "QRadioButton::indicator:checked { "
+            "  border: 2px solid #5599FF; border-radius: 8px; "
+            "  background-color: #5599FF; }"
+        )
+        radio_disabled_style = (
+            "QRadioButton { color: #666666; background-color: transparent; "
+            "font-size: 11px; spacing: 6px; }"
+            "QRadioButton::indicator { width: 14px; height: 14px; }"
+            "QRadioButton::indicator:unchecked { "
+            "  border: 2px solid #404040; border-radius: 8px; background-color: transparent; }"
+        )
+
+        from ocr.manager import EngineType
+
+        self._engine_button_group = QtWidgets.QButtonGroup(self)
+        self._engine_button_group.setExclusive(True)
+
+        # manga-ocr radio button (always available)
+        self._radio_lightweight = QtWidgets.QRadioButton("manga-ocr (Lightweight)")
+        self._radio_lightweight.setStyleSheet(radio_style)
+        self._radio_lightweight.setToolTip("CPU-friendly OCR engine, works on any hardware.")
+        self._engine_button_group.addButton(self._radio_lightweight, EngineType.LIGHTWEIGHT)
+        engine_layout.addWidget(self._radio_lightweight)
+
+        # Qwen VLM radio button + GPU note
+        vlm_row = QtWidgets.QHBoxLayout()
+        vlm_row.setContentsMargins(0, 0, 0, 0)
+        vlm_row.setSpacing(8)
+
+        self._radio_vlm = QtWidgets.QRadioButton("Qwen VLM (High Accuracy)")
+        self._engine_button_group.addButton(self._radio_vlm, EngineType.VLM)
+
+        if self._has_cuda:
+            self._radio_vlm.setStyleSheet(radio_style)
+            self._radio_vlm.setToolTip("High-accuracy VLM engine using NVIDIA GPU.")
+        else:
+            self._radio_vlm.setStyleSheet(radio_disabled_style)
+            self._radio_vlm.setEnabled(False)
+            self._radio_vlm.setToolTip("Requires an NVIDIA GPU with CUDA support.")
+
+        vlm_row.addWidget(self._radio_vlm)
+
+        if not self._has_cuda:
+            gpu_note = QtWidgets.QLabel("Requires NVIDIA GPU")
+            gpu_note.setStyleSheet(
+                "color: #777777; background-color: transparent; "
+                "font-size: 10px; font-style: italic;"
+            )
+            vlm_row.addWidget(gpu_note)
+
+        vlm_row.addStretch()
+        engine_layout.addLayout(vlm_row)
+
         # Set current selection
         current_type = self._ocr_manager.active_engine_type
-        for i in range(self.engine_combo.count()):
-            if self.engine_combo.itemData(i) == current_type.value:
-                self.engine_combo.setCurrentIndex(i)
-                break
-        self.engine_combo.currentIndexChanged.connect(self._on_engine_selected)
-        engine_layout.addWidget(self.engine_combo)
+        if current_type == EngineType.VLM and self._has_cuda:
+            self._radio_vlm.setChecked(True)
+        else:
+            self._radio_lightweight.setChecked(True)
 
-        # GPU info label
-        self.gpu_info_label = QtWidgets.QLabel()
-        self.gpu_info_label.setStyleSheet(
-            "background-color: transparent; font-size: 11px; padding: 2px 0px;"
-        )
-        self._update_gpu_info()
-        engine_layout.addWidget(self.gpu_info_label)
+        self._engine_button_group.idToggled.connect(self._on_engine_radio_toggled)
 
         # Preprocessing toggle
         self.preprocess_check = QtWidgets.QCheckBox("Apply preprocessing to this engine")
@@ -105,34 +152,77 @@ class SettingsPageWidget(QtWidgets.QWidget):
 
         layout.addWidget(trans_section)
 
-        # ── Section 3: Performance ──
-        perf_section = self._create_section("Pipeline Interval")
-        perf_layout = perf_section.layout()
+        # ── Section 3: Translation Frequency ──
+        freq_section = self._create_section("Automatic Translation Frequency")
+        freq_layout = freq_section.layout()
 
-        slider_row = QtWidgets.QHBoxLayout()
-        slider_row.setContentsMargins(0, 0, 0, 0)
+        freq_row = QtWidgets.QHBoxLayout()
+        freq_row.setContentsMargins(0, 0, 0, 0)
+        freq_row.setSpacing(6)
 
-        self.interval_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
-        self.interval_slider.setRange(50, 2000)
-        self.interval_slider.setValue(100)
-        self.interval_slider.setToolTip(
-            "How often the translation pipeline runs.\n"
-            "Lower = faster updates but more CPU/GPU usage."
+        scan_label = QtWidgets.QLabel("Scan every")
+        scan_label.setStyleSheet(
+            "color: #CCCCCC; background-color: transparent; font-size: 11px;"
         )
-        self.interval_slider.valueChanged.connect(self._on_interval_changed)
-        slider_row.addWidget(self.interval_slider)
+        freq_row.addWidget(scan_label)
 
-        self.interval_label = QtWidgets.QLabel("100ms")
-        self.interval_label.setStyleSheet(
-            "color: #AAAAAA; background-color: transparent; min-width: 55px; font-size: 11px;"
+        self.interval_spinbox = QtWidgets.QSpinBox()
+        self.interval_spinbox.setRange(50, 10000)
+        self.interval_spinbox.setValue(100)
+        self.interval_spinbox.setSuffix("")
+        self.interval_spinbox.setToolTip(
+            "How often the translation pipeline scans for new text.\n"
+            "Lower = faster updates but more CPU/GPU usage.\n"
+            "Minimum: 50ms, Maximum: 10000ms"
         )
-        self.interval_label.setAlignment(
-            QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter
-        )
-        slider_row.addWidget(self.interval_label)
+        self.interval_spinbox.setStyleSheet("""
+            QSpinBox {
+                background-color: #1A1A1A;
+                color: #EEEEEE;
+                border: 1px solid #404040;
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 11px;
+                min-width: 70px;
+            }
+            QSpinBox:focus {
+                border-color: #5599FF;
+            }
+            QSpinBox::up-button, QSpinBox::down-button {
+                background-color: #2A2A2A;
+                border: 1px solid #404040;
+                width: 16px;
+            }
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+                background-color: #3A3A3A;
+            }
+            QSpinBox::up-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-bottom: 5px solid #AAAAAA;
+                width: 0px; height: 0px;
+            }
+            QSpinBox::down-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid #AAAAAA;
+                width: 0px; height: 0px;
+            }
+        """)
+        self.interval_spinbox.valueChanged.connect(self._on_interval_changed)
+        freq_row.addWidget(self.interval_spinbox)
 
-        perf_layout.addLayout(slider_row)
-        layout.addWidget(perf_section)
+        ms_label = QtWidgets.QLabel("ms")
+        ms_label.setStyleSheet(
+            "color: #CCCCCC; background-color: transparent; font-size: 11px;"
+        )
+        freq_row.addWidget(ms_label)
+
+        freq_row.addStretch()
+        freq_layout.addLayout(freq_row)
+        layout.addWidget(freq_section)
 
         # ── Section 4: Overlay Colors ──
         color_section = self._create_section("Overlay Colors")
@@ -235,24 +325,18 @@ class SettingsPageWidget(QtWidgets.QWidget):
         container.setLayout(container_layout)
         return container
 
-    def _update_gpu_info(self) -> None:
+    def _on_engine_radio_toggled(self, button_id: int, checked: bool) -> None:
+        if not checked:
+            return
+        self.engine_changed.emit(button_id)
+        # Update preprocessing checkbox for new engine
+        from ocr.manager import EngineType
         try:
-            engine = self._ocr_manager.active_engine
-            if engine.requires_gpu:
-                self.gpu_info_label.setText("⚡ Requires NVIDIA GPU")
-                self.gpu_info_label.setStyleSheet(
-                    "color: #FFB347; background-color: transparent; font-size: 11px; padding: 2px 0px;"
-                )
-            else:
-                self.gpu_info_label.setText("✓ Runs on CPU")
-                self.gpu_info_label.setStyleSheet(
-                    "color: #7BC67E; background-color: transparent; font-size: 11px; padding: 2px 0px;"
-                )
+            etype = EngineType(button_id)
+            self._ocr_manager.set_engine(etype)
+            self.preprocess_check.setChecked(self._ocr_manager.should_preprocess)
         except Exception:
-            self.gpu_info_label.setText("No engine selected")
-            self.gpu_info_label.setStyleSheet(
-                "color: #888888; background-color: transparent; font-size: 11px; padding: 2px 0px;"
-            )
+            pass
 
     def _update_translator_status(self) -> None:
         # Check parent chain for translator reference
@@ -278,33 +362,16 @@ class SettingsPageWidget(QtWidgets.QWidget):
                 "color: #FF6B6B; background-color: transparent; font-size: 11px; padding: 2px 0px;"
             )
 
-    def _on_engine_selected(self, index: int) -> None:
-        if index < 0:
-            return
-        engine_type_val = self.engine_combo.itemData(index)
-        if engine_type_val is not None:
-            self.engine_changed.emit(engine_type_val)
-            self._update_gpu_info()
-            # Update preprocessing checkbox for new engine
-            from ocr.manager import EngineType
-            try:
-                etype = EngineType(engine_type_val)
-                self._ocr_manager.set_engine(etype)
-                self.preprocess_check.setChecked(self._ocr_manager.should_preprocess)
-            except Exception:
-                pass
-
     def _on_preprocess_toggled(self, checked: bool) -> None:
         self._ocr_manager.should_preprocess = checked
         self.preprocess_toggled.emit(self._ocr_manager.active_engine_type.value, checked)
 
     def _on_interval_changed(self, value: int) -> None:
-        self.interval_label.setText(f"{value}ms")
         self.interval_changed.emit(value)
 
     def set_interval(self, value: int) -> None:
-        """Set the interval slider value (used when loading saved preferences)."""
-        self.interval_slider.setValue(value)
+        """Set the interval spinbox value (used when loading saved preferences)."""
+        self.interval_spinbox.setValue(value)
 
     def set_translator_loaded(self, loaded: bool) -> None:
         """Update translator status display."""
