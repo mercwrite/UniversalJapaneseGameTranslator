@@ -67,6 +67,7 @@ class ControllerWindow(QtWidgets.QWidget):
         self.active_regions: dict[str, dict] = {}
         self.last_images: dict[str, "np.ndarray"] = {}
         self._pending_area = None  # For delayed overlay creation
+        self._overlay_counter = 0  # For consecutive overlay naming
 
         # Initialize backend components FIRST (before UI creation)
         self.win_cap = WindowCapture()
@@ -127,35 +128,34 @@ class ControllerWindow(QtWidgets.QWidget):
 
         # ── Navigation bar ──
         nav_bar_widget = QtWidgets.QWidget()
-        nav_bar_widget.setFixedHeight(44)
+        nav_bar_widget.setFixedHeight(40)
         nav_layout = QtWidgets.QHBoxLayout()
-        nav_layout.setContentsMargins(4, 4, 4, 4)
+        nav_layout.setContentsMargins(2, 2, 2, 2)
         nav_layout.setSpacing(4)
 
         nav_btn_style = """
             QPushButton {
                 background-color: transparent;
                 border: none;
-                border-radius: 8px;
-            }
-            QPushButton:hover {
-                background-color: rgba(70, 70, 70, 150);
+                border-radius: 6px;
+                min-height: 0px;
+                padding: 0px;
             }
         """
 
-        self.nav_btn_main = IconButton("home", size=36)
+        self.nav_btn_main = IconButton("home", size=32)
         self.nav_btn_main.setStyleSheet(nav_btn_style)
         self.nav_btn_main.setToolTip("Main")
         self.nav_btn_main.clicked.connect(lambda: self._switch_page(0))
         nav_layout.addWidget(self.nav_btn_main)
 
-        self.nav_btn_preprocess = IconButton("image-edit", size=36)
+        self.nav_btn_preprocess = IconButton("image-edit", size=32)
         self.nav_btn_preprocess.setStyleSheet(nav_btn_style)
         self.nav_btn_preprocess.setToolTip("Preprocessing")
         self.nav_btn_preprocess.clicked.connect(lambda: self._switch_page(1))
         nav_layout.addWidget(self.nav_btn_preprocess)
 
-        self.nav_btn_settings = IconButton("gear", size=36)
+        self.nav_btn_settings = IconButton("gear", size=32)
         self.nav_btn_settings.setStyleSheet(nav_btn_style)
         self.nav_btn_settings.setToolTip("Settings")
         self.nav_btn_settings.clicked.connect(lambda: self._switch_page(2))
@@ -370,8 +370,10 @@ class ControllerWindow(QtWidgets.QWidget):
                     QPushButton {
                         background-color: rgba(60, 60, 60, 200);
                         border: none;
-                        border-radius: 8px;
+                        border-radius: 6px;
                         border-bottom: 2px solid #5A9FD4;
+                        min-height: 0px;
+                        padding: 0px;
                     }
                 """)
             else:
@@ -379,10 +381,9 @@ class ControllerWindow(QtWidgets.QWidget):
                     QPushButton {
                         background-color: transparent;
                         border: none;
-                        border-radius: 8px;
-                    }
-                    QPushButton:hover {
-                        background-color: rgba(70, 70, 70, 150);
+                        border-radius: 6px;
+                        min-height: 0px;
+                        padding: 0px;
                     }
                 """)
 
@@ -719,10 +720,11 @@ class ControllerWindow(QtWidgets.QWidget):
                 return
 
             region_id = str(uuid.uuid4())[:8]
+            self._overlay_counter += 1
 
             # Create list item first (before overlay to avoid race conditions)
             try:
-                list_item = OverlayListItem(f"Overlay {region_id}", region_id)
+                list_item = OverlayListItem(f"Overlay {self._overlay_counter}", region_id)
             except Exception:
                 return
 
@@ -752,6 +754,11 @@ class ControllerWindow(QtWidgets.QWidget):
                 overlay.geometry_changed.connect(
                     lambda x, y, w, h, rid=region_id: self.on_overlay_geometry_changed(rid, x, y, w, h)
                 )
+                overlay.close_requested.connect(
+                    lambda rid=region_id: self.delete_region_by_id(rid)
+                )
+                overlay.interaction_started.connect(self._on_overlay_interaction_started)
+                overlay.interaction_finished.connect(self._on_overlay_interaction_finished)
             except Exception:
                 pass
 
@@ -898,15 +905,19 @@ class ControllerWindow(QtWidgets.QWidget):
                 "height": height,
             }
 
-            # Update list item text if needed
-            try:
-                item = self.active_regions[region_id].get("item")
-                if item and hasattr(item, "name_label"):
-                    item.name_label.setText(f"Overlay {region_id} • {width}×{height}px")
-            except Exception:
-                pass
+            # No longer overwrite the user's custom overlay name on resize
         except Exception:
             pass
+
+    def _on_overlay_interaction_started(self) -> None:
+        """Pause translation while user is dragging/resizing an overlay."""
+        if self.is_running and self.timer.isActive():
+            self.timer.stop()
+
+    def _on_overlay_interaction_finished(self) -> None:
+        """Resume translation after user finishes dragging/resizing an overlay."""
+        if self.is_running and not self.timer.isActive():
+            self.timer.start()
 
     # ---- Preferences ----
 

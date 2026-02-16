@@ -69,11 +69,12 @@ class IconButton(QtWidgets.QPushButton):
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
 
-        # Background on hover
+        # Background on hover (slightly inset for better proportions)
         if self.underMouse():
             painter.setBrush(QtGui.QColor(70, 70, 70, 150))
             painter.setPen(QtCore.Qt.PenStyle.NoPen)
-            painter.drawRoundedRect(self.rect(), 6, 6)
+            m = 2 if self.icon_size <= 32 else 1
+            painter.drawRoundedRect(self.rect().adjusted(m, m, -m, -m), 5, 5)
 
         # Draw icon
         painter.setPen(QtGui.QPen(QtGui.QColor(220, 220, 220), 2, QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap, QtCore.Qt.PenJoinStyle.RoundJoin))
@@ -156,23 +157,28 @@ class IconButton(QtWidgets.QPushButton):
             painter.drawLine(center_x + 3, center_y, center_x - 2, center_y + 6)
 
         elif self.icon_type == "gear":
-            # Draw gear/cog icon
-            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-            # Outer circle (gear body)
-            painter.drawEllipse(center_x - 6, center_y - 6, 12, 12)
-            # Inner circle (hole)
-            painter.setBrush(QtGui.QColor(220, 220, 220))
-            painter.drawEllipse(center_x - 2, center_y - 2, 4, 4)
-            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-            # Teeth: 6 short lines radiating outward at 60-degree intervals
+            # Gear icon: ring body with 6 flat-topped teeth and center hole
+            # Teeth are rounded rectangles; body ring drawn on top hides bases
             import math
-            for angle_deg in range(0, 360, 60):
-                rad = math.radians(angle_deg)
-                x1 = center_x + int(6 * math.cos(rad))
-                y1 = center_y + int(6 * math.sin(rad))
-                x2 = center_x + int(9 * math.cos(rad))
-                y2 = center_y + int(9 * math.sin(rad))
-                painter.drawLine(x1, y1, x2, y2)
+            cx, cy = float(center_x), float(center_y)
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            painter.setBrush(QtGui.QColor(220, 220, 220))
+            # Draw 6 flat-topped teeth as rounded rectangles
+            for i in range(6):
+                painter.save()
+                painter.translate(cx, cy)
+                painter.rotate(i * 60.0)
+                # Wide rounded rect: flat top with rounded corners
+                painter.drawRoundedRect(
+                    QtCore.QRectF(-4.0, -12.0, 8.0, 6.5), 2.0, 2.0
+                )
+                painter.restore()
+            # Draw body ring with center hole (OddEvenFill makes the hole)
+            ring = QtGui.QPainterPath()
+            ring.setFillRule(QtCore.Qt.FillRule.OddEvenFill)
+            ring.addEllipse(QtCore.QPointF(cx, cy), 7.5, 7.5)
+            ring.addEllipse(QtCore.QPointF(cx, cy), 3.0, 3.0)
+            painter.drawPath(ring)
 
         elif self.icon_type == "image-edit":
             # Draw image frame with pencil overlay
@@ -190,6 +196,39 @@ class IconButton(QtWidgets.QPushButton):
             painter.drawLine(center_x + 2, center_y + 7, center_x + 9, center_y)
             # Pencil tip
             painter.drawLine(center_x + 9, center_y, center_x + 7, center_y + 1)
+
+        elif self.icon_type == "pencil":
+            # Pencil: diagonal rectangle body with triangular tip
+            # Oriented from lower-left (tip) to upper-right (eraser)
+            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+            # Body: diagonal rectangle
+            body = QtGui.QPolygon([
+                QtCore.QPoint(center_x - 3, center_y + 2),
+                QtCore.QPoint(center_x + 6, center_y - 7),
+                QtCore.QPoint(center_x + 9, center_y - 4),
+                QtCore.QPoint(center_x, center_y + 5),
+            ])
+            painter.drawPolygon(body)
+            # Eraser divider line across the body near the top
+            painter.drawLine(
+                center_x + 5, center_y - 6,
+                center_x + 8, center_y - 3
+            )
+            # Tip triangle extending from body to a sharp point
+            tip = QtGui.QPolygon([
+                QtCore.QPoint(center_x - 3, center_y + 2),
+                QtCore.QPoint(center_x, center_y + 5),
+                QtCore.QPoint(center_x - 6, center_y + 8),
+            ])
+            painter.drawPolygon(tip)
+            # Filled lead at the very tip
+            painter.setBrush(QtGui.QColor(220, 220, 220))
+            lead = QtGui.QPolygon([
+                QtCore.QPoint(center_x - 5, center_y + 5),
+                QtCore.QPoint(center_x - 3, center_y + 7),
+                QtCore.QPoint(center_x - 6, center_y + 8),
+            ])
+            painter.drawPolygon(lead)
 
         elif self.icon_type == "home":
             # Draw house icon
@@ -231,6 +270,18 @@ class OverlayListItem(QtWidgets.QWidget):
         """)
         layout.addWidget(self.name_label, 1)  # Stretch factor
 
+        # Rename button (Pencil icon) - moved to the left of eye button
+        self.rename_btn = IconButton("pencil")
+        self.rename_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                border-radius: 6px;
+            }
+        """)
+        self.rename_btn.clicked.connect(self._start_rename)
+        layout.addWidget(self.rename_btn, 0)
+
         # Toggle button (Eye icon) - acts as a toggle switch
         self.toggle_btn = IconButton("eye")
         self.toggle_btn.setCheckable(True)
@@ -267,6 +318,15 @@ class OverlayListItem(QtWidgets.QWidget):
                 background-color: rgba(70, 70, 70, 120);
             }
         """)
+
+    def _start_rename(self):
+        """Show an inline editor to rename the overlay."""
+        current_name = self.name_label.text()
+        new_name, ok = QtWidgets.QInputDialog.getText(
+            self, "Rename Overlay", "New name:", text=current_name
+        )
+        if ok and new_name.strip():
+            self.name_label.setText(new_name.strip())
 
     def _update_toggle_icon(self, checked: bool):
         """Update the toggle button icon based on state."""

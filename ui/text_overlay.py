@@ -5,6 +5,11 @@ from error_handler import safe_execute
 class TextBoxOverlay(QtWidgets.QLabel):
     # Signal emitted when position or size changes
     geometry_changed = QtCore.pyqtSignal(int, int, int, int)  # x, y, width, height
+    # Signal emitted when the overlay is closed via its close button
+    close_requested = QtCore.pyqtSignal()
+    # Signals emitted when user starts/stops dragging or resizing
+    interaction_started = QtCore.pyqtSignal()
+    interaction_finished = QtCore.pyqtSignal()
 
     def __init__(self, x, y, w, h, initial_opacity=200, bg_color="#0D0D0D", text_color="#EEEEEE"):
         super().__init__()
@@ -74,10 +79,14 @@ class TextBoxOverlay(QtWidgets.QLabel):
             }
         """)
         self.close_button.hide()  # Hidden by default
-        self.close_button.clicked.connect(self.close)
+        self.close_button.clicked.connect(self._on_close_clicked)
         self.update_close_button_position()
 
         self.show()
+
+    def _on_close_clicked(self):
+        """Handle close button click - emit signal so controller can clean up."""
+        self.close_requested.emit()
 
     def update_close_button_position(self):
         """Update close button position to top-right corner."""
@@ -217,6 +226,7 @@ class TextBoxOverlay(QtWidgets.QLabel):
                 # Resizing mode - store current global position and geometry
                 self.drag_start_position = event.globalPosition().toPoint()
                 self.resize_start_geometry = self.geometry()
+            self.interaction_started.emit()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
@@ -294,6 +304,7 @@ class TextBoxOverlay(QtWidgets.QLabel):
             # Update cursor based on current position
             edge = self.get_resize_edge(event.pos())
             self.setCursor(self.get_cursor_for_edge(edge))
+            self.interaction_finished.emit()
         super().mouseReleaseEvent(event)
 
     @safe_execute(default_return=None, log_errors=False, error_message="Failed to emit geometry changed")

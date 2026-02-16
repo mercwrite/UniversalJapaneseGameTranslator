@@ -375,6 +375,7 @@ class PreprocessingEditorWidget(QtWidgets.QWidget):
         btn_capture.setToolTip("Capture the selected overlay region")
         btn_capture.clicked.connect(self._capture_preview_image)
         preview_layout.addWidget(btn_capture)
+        preview_layout.addSpacing(16)  # Add space below capture button
 
         preview_container.setLayout(preview_layout)
         layout.addWidget(preview_container)

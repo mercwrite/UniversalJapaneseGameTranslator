@@ -37,23 +37,20 @@ class TranslationPipeline:
         Returns a 'difference score' between two images.
         0 = Identical. Higher numbers = more different.
         """
-        try:
-            if img1 is None or img2 is None:
-                return 1000.0
-
-            if not SafeWindowCapture.validate_image(img1) or not SafeWindowCapture.validate_image(img2):
-                return 1000.0
-
-            if img1.size != img2.size:
-                return 1000.0
-
-            arr1 = np.array(img1.convert("L"), dtype=np.int16)
-            arr2 = np.array(img2.convert("L"), dtype=np.int16)
-
-            diff = np.abs(arr1 - arr2)
-            return float(np.mean(diff))
-        except Exception:
+        if img1 is None or img2 is None:
             return 1000.0
+
+        if not SafeWindowCapture.validate_image(img1) or not SafeWindowCapture.validate_image(img2):
+            return 1000.0
+
+        if img1.size != img2.size:
+            return 1000.0
+
+        arr1 = np.array(img1.convert("L"), dtype=np.int16)
+        arr2 = np.array(img2.convert("L"), dtype=np.int16)
+
+        diff = np.abs(arr1 - arr2)
+        return float(np.mean(diff))
 
     @safe_execute(default_return=None, log_errors=True, error_message="Pipeline error")
     def run(
@@ -70,106 +67,102 @@ class TranslationPipeline:
                          (mutated in-place when a new image is processed).
             is_region_enabled_fn: callable(region_id) -> bool.
         """
-        try:
-            if not active_regions:
-                return
+        if not active_regions:
+            return
 
-            if not self.win_cap or not SafeWindowCapture.is_window_valid(self.win_cap.hwnd):
-                return
+        if not self.win_cap or not SafeWindowCapture.is_window_valid(self.win_cap.hwnd):
+            return
 
-            if not self.ocr_manager or not self.translator:
-                return
+        if not self.ocr_manager or not self.translator:
+            return
 
-            self.perf.start_cycle()
+        self.perf.start_cycle()
 
-            full_window_img = self.win_cap.screenshot()
-            if not SafeWindowCapture.validate_image(full_window_img):
-                return
+        full_window_img = self.win_cap.screenshot()
+        if not SafeWindowCapture.validate_image(full_window_img):
+            return
 
-            win_x, win_y, win_w, win_h = self.win_cap.get_window_rect()
-            if win_w <= 0 or win_h <= 0:
-                return
+        win_x, win_y, win_w, win_h = self.win_cap.get_window_rect()
+        if win_w <= 0 or win_h <= 0:
+            return
 
-            for rid, data in list(active_regions.items()):
+        for rid, data in list(active_regions.items()):
+            try:
+                if not is_region_enabled_fn(rid):
+                    continue
+
+                if "rect" not in data or "overlay" not in data:
+                    continue
+
+                screen_rect = data["rect"]
+                if not validate_region_data(screen_rect):
+                    continue
+
+                rel_x = screen_rect["left"] - win_x
+                rel_y = screen_rect["top"] - win_y
+                rel_w = screen_rect["width"]
+                rel_h = screen_rect["height"]
+
+                if rel_x < 0 or rel_y < 0:
+                    continue
+                if rel_x + rel_w > win_w or rel_y + rel_h > win_h:
+                    continue
+                if rel_w <= 0 or rel_h <= 0:
+                    continue
+
                 try:
-                    if not is_region_enabled_fn(rid):
+                    current_crop = full_window_img.crop(
+                        (rel_x, rel_y, rel_x + rel_w, rel_y + rel_h)
+                    )
+                    if not SafeWindowCapture.validate_image(current_crop):
                         continue
-
-                    if "rect" not in data or "overlay" not in data:
-                        continue
-
-                    screen_rect = data["rect"]
-                    if not validate_region_data(screen_rect):
-                        continue
-
-                    rel_x = screen_rect["left"] - win_x
-                    rel_y = screen_rect["top"] - win_y
-                    rel_w = screen_rect["width"]
-                    rel_h = screen_rect["height"]
-
-                    if rel_x < 0 or rel_y < 0:
-                        continue
-                    if rel_x + rel_w > win_w or rel_y + rel_h > win_h:
-                        continue
-                    if rel_w <= 0 or rel_h <= 0:
-                        continue
-
-                    try:
-                        current_crop = full_window_img.crop(
-                            (rel_x, rel_y, rel_x + rel_w, rel_y + rel_h)
-                        )
-                        if not SafeWindowCapture.validate_image(current_crop):
-                            continue
-                    except Exception:
-                        continue
-
-                    last_img = last_images.get(rid)
-                    diff_score = self.calculate_image_diff(current_crop, last_img)
-
-                    if diff_score < 2.0:
-                        continue
-
-                    last_images[rid] = current_crop
-
-                    try:
-                        self.perf.start_ocr()
-                        ocr_result = self.ocr_manager.process(current_crop)
-                        if ocr_result.is_empty:
-                            continue
-                        jap_text = ocr_result.text
-                        print(f"[OCR] {ocr_result.engine_name}: {ocr_result.processing_time_ms:.0f}ms")
-                    except Exception as e:
-                        print(f"OCR error for region {rid}: {e}")
-                        continue
-
-                    try:
-                        self.perf.start_translation()
-                        eng_text = self.translator.translate(jap_text)
-                        if not eng_text or not isinstance(eng_text, str):
-                            eng_text = "Translation error"
-                    except Exception as e:
-                        print(f"Translation error for region {rid}: {e}")
-                        eng_text = "Translation error"
-
-                    try:
-                        stats = self.perf.end_cycle()
-                        print(
-                            f"[PERF] OCR: {stats['ocr_ms']}ms | "
-                            f"Trans: {stats['trans_ms']}ms | "
-                            f"Total: {stats['total_ms']}ms"
-                        )
-                    except Exception:
-                        pass
-
-                    try:
-                        overlay = data.get("overlay")
-                        if overlay:
-                            overlay.update_text(eng_text)
-                    except Exception:
-                        pass
-
                 except Exception:
                     continue
 
-        except Exception:
-            pass
+                last_img = last_images.get(rid)
+                diff_score = self.calculate_image_diff(current_crop, last_img)
+
+                if diff_score < 2.0:
+                    continue
+
+                last_images[rid] = current_crop
+
+                try:
+                    self.perf.start_ocr()
+                    ocr_result = self.ocr_manager.process(current_crop)
+                    if ocr_result.is_empty:
+                        continue
+                    jap_text = ocr_result.text
+                    print(f"[OCR] {ocr_result.engine_name}: {ocr_result.processing_time_ms:.0f}ms")
+                except Exception as e:
+                    print(f"OCR error for region {rid}: {e}")
+                    continue
+
+                try:
+                    self.perf.start_translation()
+                    eng_text = self.translator.translate(jap_text)
+                    if not eng_text or not isinstance(eng_text, str):
+                        eng_text = "Translation error"
+                except Exception as e:
+                    print(f"Translation error for region {rid}: {e}")
+                    eng_text = "Translation error"
+
+                try:
+                    stats = self.perf.end_cycle()
+                    print(
+                        f"[PERF] OCR: {stats['ocr_ms']}ms | "
+                        f"Trans: {stats['trans_ms']}ms | "
+                        f"Total: {stats['total_ms']}ms"
+                    )
+                except Exception:
+                    pass
+
+                try:
+                    overlay = data.get("overlay")
+                    if overlay:
+                        overlay.update_text(eng_text)
+                except Exception:
+                    pass
+
+            except Exception:
+                continue
