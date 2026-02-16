@@ -29,13 +29,15 @@ class ControllerWindow(QtWidgets.QWidget):
         self.setObjectName("ControllerWindow")
         self.setWindowTitle("Universal Japanese Game Translator")
 
-        # Set window flags for overlay behavior
+        # Set window flags for overlay behavior (no-focus to prevent game stalling)
         self.setWindowFlags(
             QtCore.Qt.WindowType.FramelessWindowHint |
             QtCore.Qt.WindowType.WindowStaysOnTopHint |
-            QtCore.Qt.WindowType.Tool
+            QtCore.Qt.WindowType.Tool |
+            QtCore.Qt.WindowType.WindowDoesNotAcceptFocus
         )
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
         # Docking state
         self.is_expanded = False
@@ -235,6 +237,20 @@ class ControllerWindow(QtWidgets.QWidget):
         self._position_on_right_edge()
         # Start mouse tracking after a short delay to ensure window is fully rendered
         QtCore.QTimer.singleShot(100, self.mouse_check_timer.start)
+        # Apply Win32 WS_EX_NOACTIVATE after window is shown
+        QtCore.QTimer.singleShot(0, self._apply_noactivate_style)
+
+    def _apply_noactivate_style(self):
+        """Apply Win32 WS_EX_NOACTIVATE to prevent game focus loss on click."""
+        try:
+            import ctypes
+            hwnd = int(self.winId())
+            GWL_EXSTYLE = -20
+            WS_EX_NOACTIVATE = 0x08000000
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE)
+        except Exception:
+            pass
 
     def _create_tab_widget(self) -> QtWidgets.QWidget:
         """Create the tab widget shown when collapsed - small button."""

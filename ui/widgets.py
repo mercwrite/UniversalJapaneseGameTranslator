@@ -323,7 +323,7 @@ class OverlayListItem(QtWidgets.QWidget):
         """Show an inline editor to rename the overlay."""
         current_name = self.name_label.text()
         new_name, ok = QtWidgets.QInputDialog.getText(
-            self, "Rename Overlay", "New name:", text=current_name
+            None, "Rename Overlay", "New name:", text=current_name
         )
         if ok and new_name.strip():
             self.name_label.setText(new_name.strip())

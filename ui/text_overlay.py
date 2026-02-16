@@ -22,13 +22,15 @@ class TextBoxOverlay(QtWidgets.QLabel):
         self.bg_color = QtGui.QColor(bg_color)
         self.text_color = text_color
 
-        # Window Flags - frameless
+        # Window Flags - frameless, no-focus to prevent game stalling
         self.setWindowFlags(
             QtCore.Qt.WindowType.FramelessWindowHint
             | QtCore.Qt.WindowType.WindowStaysOnTopHint
             | QtCore.Qt.WindowType.Tool
+            | QtCore.Qt.WindowType.WindowDoesNotAcceptFocus
         )
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
         # Mouse interaction state
         self.drag_start_position = None
@@ -83,6 +85,19 @@ class TextBoxOverlay(QtWidgets.QLabel):
         self.update_close_button_position()
 
         self.show()
+        self._apply_noactivate_style()
+
+    def _apply_noactivate_style(self):
+        """Apply Win32 WS_EX_NOACTIVATE to prevent game focus loss on click."""
+        try:
+            import ctypes
+            hwnd = int(self.winId())
+            GWL_EXSTYLE = -20
+            WS_EX_NOACTIVATE = 0x08000000
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE)
+        except Exception:
+            pass
 
     def _on_close_clicked(self):
         """Handle close button click - emit signal so controller can clean up."""
@@ -215,7 +230,8 @@ class TextBoxOverlay(QtWidgets.QLabel):
         """Handle mouse press for dragging and resizing."""
         # Don't process if clicking on close button
         if self.close_button.underMouse():
-            return super().mousePressEvent(event)
+            event.accept()
+            return
 
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self.resize_edge = self.get_resize_edge(event.pos())
@@ -227,7 +243,7 @@ class TextBoxOverlay(QtWidgets.QLabel):
                 self.drag_start_position = event.globalPosition().toPoint()
                 self.resize_start_geometry = self.geometry()
             self.interaction_started.emit()
-        super().mousePressEvent(event)
+        event.accept()
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
         """Handle mouse move for cursor changes and dragging/resizing."""
@@ -293,7 +309,7 @@ class TextBoxOverlay(QtWidgets.QLabel):
                 # Apply new geometry
                 self.setGeometry(new_x, new_y, new_width, new_height)
                 self._emit_geometry_changed()
-        super().mouseMoveEvent(event)
+        event.accept()
 
     def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
         """Handle mouse release to stop dragging/resizing."""
@@ -305,7 +321,7 @@ class TextBoxOverlay(QtWidgets.QLabel):
             edge = self.get_resize_edge(event.pos())
             self.setCursor(self.get_cursor_for_edge(edge))
             self.interaction_finished.emit()
-        super().mouseReleaseEvent(event)
+        event.accept()
 
     @safe_execute(default_return=None, log_errors=False, error_message="Failed to emit geometry changed")
     def _emit_geometry_changed(self) -> None:

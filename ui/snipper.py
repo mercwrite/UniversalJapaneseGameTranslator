@@ -12,9 +12,11 @@ class Snipper(QtWidgets.QWidget):
         self.setWindowFlags(
             QtCore.Qt.WindowType.FramelessWindowHint
             | QtCore.Qt.WindowType.WindowStaysOnTopHint
+            | QtCore.Qt.WindowType.WindowDoesNotAcceptFocus
         )
 
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
         # Ensure the overlay covers all screens, not just the primary one
         screen_geometry = QtWidgets.QApplication.primaryScreen().virtualGeometry()
@@ -22,6 +24,19 @@ class Snipper(QtWidgets.QWidget):
 
         self.setCursor(QtCore.Qt.CursorShape.CrossCursor)
         self.show()
+        self._apply_noactivate_style()
+
+    def _apply_noactivate_style(self):
+        """Apply Win32 WS_EX_NOACTIVATE to prevent game focus loss on click."""
+        try:
+            import ctypes
+            hwnd = int(self.winId())
+            GWL_EXSTYLE = -20
+            WS_EX_NOACTIVATE = 0x08000000
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE)
+        except Exception:
+            pass
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # type: ignore[override]
         painter = QtGui.QPainter(self)

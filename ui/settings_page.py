@@ -328,7 +328,7 @@ class SettingsPageWidget(QtWidgets.QWidget):
         """Open color picker for overlay background color."""
         current = QtGui.QColor(self.bg_color_swatch.color)
         color = QtWidgets.QColorDialog.getColor(
-            current, self, "Overlay Background Color",
+            current, None, "Overlay Background Color",
             QtWidgets.QColorDialog.ColorDialogOption.DontUseNativeDialog
         )
         if color.isValid():
@@ -340,7 +340,7 @@ class SettingsPageWidget(QtWidgets.QWidget):
         """Open color picker for overlay text color."""
         current = QtGui.QColor(self.text_color_swatch.color)
         color = QtWidgets.QColorDialog.getColor(
-            current, self, "Overlay Text Color",
+            current, None, "Overlay Text Color",
             QtWidgets.QColorDialog.ColorDialogOption.DontUseNativeDialog
         )
         if color.isValid():
