@@ -38,6 +38,7 @@ class ControllerWindow(QtWidgets.QWidget):
         )
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_AlwaysShowToolTips, True)
 
         # Docking state
         self.is_expanded = False
@@ -147,13 +148,13 @@ class ControllerWindow(QtWidgets.QWidget):
 
         self.nav_btn_main = IconButton("home", size=32)
         self.nav_btn_main.setStyleSheet(nav_btn_style)
-        self.nav_btn_main.setToolTip("Main")
+        self.nav_btn_main.setToolTip("Home")
         self.nav_btn_main.clicked.connect(lambda: self._switch_page(0))
         nav_layout.addWidget(self.nav_btn_main)
 
         self.nav_btn_preprocess = IconButton("image-edit", size=32)
         self.nav_btn_preprocess.setStyleSheet(nav_btn_style)
-        self.nav_btn_preprocess.setToolTip("Preprocessing")
+        self.nav_btn_preprocess.setToolTip("Edit Preprocessing")
         self.nav_btn_preprocess.clicked.connect(lambda: self._switch_page(1))
         nav_layout.addWidget(self.nav_btn_preprocess)
 

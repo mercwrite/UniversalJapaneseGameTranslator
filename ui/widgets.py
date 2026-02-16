@@ -279,6 +279,7 @@ class OverlayListItem(QtWidgets.QWidget):
                 border-radius: 6px;
             }
         """)
+        self.rename_btn.setToolTip("Rename Overlay")
         self.rename_btn.clicked.connect(self._start_rename)
         layout.addWidget(self.rename_btn, 0)
 
@@ -293,11 +294,13 @@ class OverlayListItem(QtWidgets.QWidget):
                 border-radius: 6px;
             }
         """)
+        self.toggle_btn.setToolTip("Toggle Overlay Visibility")
         self.toggle_btn.toggled.connect(self._update_toggle_icon)
         layout.addWidget(self.toggle_btn, 0)
 
         # Delete button (X icon)
         self.delete_btn = IconButton("close")
+        self.delete_btn.setToolTip("Delete Overlay")
         self.delete_btn.setStyleSheet("""
             QPushButton {
                 background-color: transparent;

@@ -31,6 +31,7 @@ class TextBoxOverlay(QtWidgets.QLabel):
         )
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_AlwaysShowToolTips, True)
 
         # Mouse interaction state
         self.drag_start_position = None
