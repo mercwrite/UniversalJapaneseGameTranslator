@@ -841,14 +841,57 @@ class ControllerWindow(QtWidgets.QWidget):
             del self.active_regions[region_id]
             if region_id in self.last_images:
                 del self.last_images[region_id]
+
+            # Auto-stop translation when no overlays remain
+            if not self.active_regions and self.is_running:
+                self._stop_translation()
         except Exception:
             pass
+
+    def _stop_translation(self) -> None:
+        """Stop translation and reset the start/stop button state."""
+        self.is_running = False
+        self.btn_start_stop.setChecked(False)
+        self.btn_start_stop.icon_type = "play"
+        self.btn_start_stop.setToolTip("Start Translation")
+        self.btn_start_stop.update()
+        self.timer.stop()
+
+    @staticmethod
+    def _show_topmost_info(title: str, text: str) -> None:
+        """Show an informational popup that stays on top of all windows."""
+        msg = QtWidgets.QMessageBox()
+        msg.setIcon(QtWidgets.QMessageBox.Icon.Information)
+        msg.setWindowTitle(title)
+        msg.setText(text)
+        msg.setWindowFlags(
+            msg.windowFlags() | QtCore.Qt.WindowType.WindowStaysOnTopHint
+        )
+        msg.exec()
 
     def toggle_translation(self, checked=None) -> None:
         """Toggle translation on/off."""
         self.is_running = self.btn_start_stop.isChecked()
 
         if self.is_running:
+            # Guard: require a window to be selected
+            if self.combo_games.currentIndex() == -1:
+                self._stop_translation()
+                self._show_topmost_info(
+                    "No Window Selected",
+                    "Please select a game window before starting translation."
+                )
+                return
+
+            # Guard: require at least one overlay
+            if not self.active_regions:
+                self._stop_translation()
+                self._show_topmost_info(
+                    "No Overlays",
+                    "Please add at least one overlay region before starting translation."
+                )
+                return
+
             # Switch to Stop icon (Square)
             self.btn_start_stop.icon_type = "stop"
             self.btn_start_stop.setToolTip("Stop Translation")

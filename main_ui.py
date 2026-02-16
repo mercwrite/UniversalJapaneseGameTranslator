@@ -41,6 +41,11 @@ def main() -> None:
         
         sys.excepthook = exception_handler
         
+        # Prevent Qt from quitting when transient dialogs close, since the
+        # controller uses Tool/WindowDoesNotAcceptFocus flags that Qt doesn't
+        # count as a "real" window.  The app exits explicitly via QApplication.quit().
+        app.setQuitOnLastWindowClosed(False)
+
         window = ControllerWindow()
         window.show()
         sys.exit(app.exec())
