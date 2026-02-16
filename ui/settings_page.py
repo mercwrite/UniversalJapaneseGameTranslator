@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 
+from ui.widgets import SpinnerWidget
+
 if TYPE_CHECKING:
     from ocr.manager import OCRManager
 
@@ -103,6 +105,23 @@ class SettingsPageWidget(QtWidgets.QWidget):
             self._radio_lightweight.setChecked(True)
 
         self._engine_button_group.idToggled.connect(self._on_engine_radio_toggled)
+
+        # Engine loading status
+        self._current_engine_status = ""
+        status_row = QtWidgets.QHBoxLayout()
+        status_row.setContentsMargins(0, 0, 0, 0)
+        status_row.setSpacing(6)
+
+        self._engine_spinner = SpinnerWidget(size=14, color="#5599FF")
+        status_row.addWidget(self._engine_spinner)
+
+        self._engine_status_label = QtWidgets.QLabel("Not loaded — will load on first scan")
+        self._engine_status_label.setStyleSheet(
+            "color: #888888; background-color: transparent; font-size: 10px;"
+        )
+        status_row.addWidget(self._engine_status_label)
+        status_row.addStretch()
+        engine_layout.addLayout(status_row)
 
         # Preprocessing toggle
         self.preprocess_check = QtWidgets.QCheckBox("Apply preprocessing to this engine")
@@ -384,6 +403,35 @@ class SettingsPageWidget(QtWidgets.QWidget):
             self.translator_status.setText("Sugoi Translator: ✗ Not loaded")
             self.translator_status.setStyleSheet(
                 "color: #FF6B6B; background-color: transparent; font-size: 11px; padding: 2px 0px;"
+            )
+
+    def set_engine_status(self, status: str) -> None:
+        """Update the engine loading status display.
+
+        Args:
+            status: One of 'not_loaded', 'loading', or 'loaded'.
+        """
+        if status == self._current_engine_status:
+            return
+        self._current_engine_status = status
+
+        if status == "loading":
+            self._engine_spinner.start()
+            self._engine_status_label.setText("Loading model...")
+            self._engine_status_label.setStyleSheet(
+                "color: #FFB347; background-color: transparent; font-size: 10px;"
+            )
+        elif status == "loaded":
+            self._engine_spinner.stop()
+            self._engine_status_label.setText("Model loaded")
+            self._engine_status_label.setStyleSheet(
+                "color: #7BC67E; background-color: transparent; font-size: 10px;"
+            )
+        else:
+            self._engine_spinner.stop()
+            self._engine_status_label.setText("Not loaded \u2014 will load on first scan")
+            self._engine_status_label.setStyleSheet(
+                "color: #888888; background-color: transparent; font-size: 10px;"
             )
 
     def set_overlay_colors(self, bg_color: str, text_color: str) -> None:

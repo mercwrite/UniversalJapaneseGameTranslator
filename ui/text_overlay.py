@@ -1,5 +1,6 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
 from error_handler import safe_execute
+from ui.widgets import SpinnerWidget
 
 
 class TextBoxOverlay(QtWidgets.QLabel):
@@ -85,6 +86,10 @@ class TextBoxOverlay(QtWidgets.QLabel):
         self.close_button.clicked.connect(self._on_close_clicked)
         self.update_close_button_position()
 
+        # Translation spinner (shown when OCR/translation is in progress)
+        self.spinner = SpinnerWidget(size=18, color="#FFFFFF", thickness=2, parent=self)
+        self._update_spinner_position()
+
         self.show()
         self._apply_noactivate_style()
 
@@ -112,10 +117,26 @@ class TextBoxOverlay(QtWidgets.QLabel):
             margin
         )
 
+    def _update_spinner_position(self):
+        """Position spinner to the left of the close button."""
+        margin = 6
+        self.spinner.move(
+            self.close_button.x() - self.spinner.width() - 4,
+            margin + (self.close_button.height() - self.spinner.height()) // 2
+        )
+
+    def set_translating(self, translating: bool) -> None:
+        """Show or hide the translation spinner."""
+        if translating:
+            self.spinner.start()
+        else:
+            self.spinner.stop()
+
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
-        """Handle resize events to reposition close button."""
+        """Handle resize events to reposition close button and spinner."""
         super().resizeEvent(event)
         self.update_close_button_position()
+        self._update_spinner_position()
 
     def enterEvent(self, event: QtGui.QEnterEvent) -> None:
         """Show close button when mouse enters the widget."""

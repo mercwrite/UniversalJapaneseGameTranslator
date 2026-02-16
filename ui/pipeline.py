@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from PyQt6 import QtWidgets
 from error_handler import safe_execute, SafeWindowCapture, validate_region_data
 
 if TYPE_CHECKING:
@@ -87,6 +88,8 @@ class TranslationPipeline:
             return
 
         for rid, data in list(active_regions.items()):
+            overlay = data.get("overlay")
+            translating = False
             try:
                 if not is_region_enabled_fn(rid):
                     continue
@@ -127,6 +130,12 @@ class TranslationPipeline:
 
                 last_images[rid] = current_crop
 
+                # Show spinner on overlay before OCR/translation
+                if overlay:
+                    overlay.set_translating(True)
+                    translating = True
+                    QtWidgets.QApplication.processEvents()
+
                 try:
                     self.perf.start_ocr()
                     ocr_result = self.ocr_manager.process(current_crop)
@@ -158,7 +167,6 @@ class TranslationPipeline:
                     pass
 
                 try:
-                    overlay = data.get("overlay")
                     if overlay:
                         overlay.update_text(eng_text)
                 except Exception:
@@ -166,3 +174,6 @@ class TranslationPipeline:
 
             except Exception:
                 continue
+            finally:
+                if translating and overlay:
+                    overlay.set_translating(False)

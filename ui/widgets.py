@@ -3,6 +3,45 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
 
 
+class SpinnerWidget(QtWidgets.QWidget):
+    """Animated spinning arc indicator."""
+
+    def __init__(self, size: int = 18, color: str = "#AAAAAA", thickness: int = 2, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(size, size)
+        self._color = QtGui.QColor(color)
+        self._thickness = thickness
+        self._angle = 0
+        self._timer = QtCore.QTimer(self)
+        self._timer.timeout.connect(self._rotate)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.hide()
+
+    def start(self):
+        """Start the spinning animation and show the widget."""
+        self._timer.start(50)
+        self.show()
+
+    def stop(self):
+        """Stop the spinning animation and hide the widget."""
+        self._timer.stop()
+        self.hide()
+
+    def _rotate(self):
+        self._angle = (self._angle + 30) % 360
+        self.update()
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        pen = QtGui.QPen(self._color, self._thickness)
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        margin = self._thickness
+        rect = self.rect().adjusted(margin, margin, -margin, -margin)
+        painter.drawArc(rect, self._angle * 16, 270 * 16)
+
+
 class ModernComboBox(QtWidgets.QComboBox):
     """Custom ComboBox with animated arrow."""
 

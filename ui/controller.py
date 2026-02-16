@@ -220,6 +220,10 @@ class ControllerWindow(QtWidgets.QWidget):
         self.settings_page.set_translator_loaded(self.translator is not None)
         self.settings_page.set_interval(self.prefs.pipeline_interval)
         self.settings_page.set_overlay_colors(self.prefs.overlay_bg_color, self.prefs.overlay_text_color)
+        # Set initial engine loading status
+        if self.ocr_manager:
+            engine = self.ocr_manager.active_engine
+            self.settings_page.set_engine_status("loaded" if engine.is_loaded else "not_loaded")
         self.page_stack.addWidget(self.settings_page)
 
         self.page_stack.setCurrentIndex(0)
@@ -1063,6 +1067,12 @@ class ControllerWindow(QtWidgets.QWidget):
             engine_type = EngineType(engine_type_value)
             self.ocr_manager.set_engine(engine_type)
             self.prefs.engine_type = engine_type_value
+            # Update engine loading status on settings page
+            engine = self.ocr_manager.active_engine
+            if engine.is_loaded:
+                self.settings_page.set_engine_status("loaded")
+            else:
+                self.settings_page.set_engine_status("not_loaded")
         except Exception as e:
             print(f"Failed to switch engine: {e}")
 
@@ -1116,7 +1126,20 @@ class ControllerWindow(QtWidgets.QWidget):
 
     def _run_pipeline(self) -> None:
         """Timer callback that delegates to the TranslationPipeline."""
+        # Track engine loading state for settings page feedback
+        if self.ocr_manager:
+            engine = self.ocr_manager.active_engine
+            was_loaded = engine.is_loaded
+            if not was_loaded:
+                self.settings_page.set_engine_status("loading")
+                QtWidgets.QApplication.processEvents()
+
         self.pipeline.run(self.active_regions, self.last_images, self.is_region_enabled)
+
+        if self.ocr_manager:
+            engine = self.ocr_manager.active_engine
+            if engine.is_loaded:
+                self.settings_page.set_engine_status("loaded")
 
 
 def main() -> None:
